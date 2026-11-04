@@ -121,12 +121,7 @@ The ScriptUI panel includes one-click presets for common design assets:
 
 ---
 
-## 🛠️ ZXP Packaging & Marketplace Publishing
 
-For packaging instructions and submission guidelines for **Adobe Developer Console** and **aescripts.com**, see:
-[build_zxp/ZXP_PACKAGING_GUIDE.md](file:///g:/My%20Drive/_openProjects/Extruded_round_corners_corners/build_zxp/ZXP_PACKAGING_GUIDE.md)
-
----
 
 ## 📄 License
 MIT License. Free to use, modify, and distribute.
