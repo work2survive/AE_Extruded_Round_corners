@@ -1,23 +1,24 @@
 /**
- * Extruded Round Corners Maker v1.1.0
+ * Extruded Round Corners Maker v1.2.0
  * Adobe After Effects Script & ScriptUI Panel
  * 
  * Features:
  * - 2D & 3D Extruded Rounded Rectangle generator with independent corner radii.
- * - Non-C4D / Classic 3D native geometry: 2D segment strips with strictly needed count.
- * - Dynamic Timeline & Expression Animation: Width, Height, Depth, Radii, Colors, Scale, Offset.
+ * - Non-C4D / Classic 3D & Advanced 3D native geometry: 2D segment strips with strictly needed count.
+ * - Symmetrical perimeter math: Rotate X = 90, Rotate Y = 0, Rotate Z = continuous perimeter angle (0-360 deg).
+ * - Inner sides of both caps match the Edge Color.
+ * - Full Dynamic Timeline & Expression Animation: Width, Height, Depth, Radii, Colors, Scale, Offset.
  * - "Link All 4 Corners" boolean control: when active, all 4 corners use values from Top-Left.
- * - Universal 2D Pre-comp Screen Wrapper: works flawlessly in Classic 3D & Advanced 3D without 3D track-matte breaking.
+ * - Universal 2D Pre-comp Screen Wrapper: works in Classic 3D & Advanced 3D without 3D track-matte breaking.
  * - Anti-gap & anti-clipping precision math (sub-pixel seam overlap & cap Z-offset).
  * 
  * Compatible with Adobe After Effects CC 2018 through 2026+.
- * Distribution-ready for Adobe Exchange / aescripts.com
  */
 
 (function (thisObj) {
 
     var SCRIPT_NAME = "Extruded Round Corners Maker";
-    var SCRIPT_VERSION = "1.1.0";
+    var SCRIPT_VERSION = "1.2.0";
 
     // Helper: Hex string to [R, G, B, A] normalized (0-1)
     function hexToRgba(hex, alpha) {
@@ -43,7 +44,7 @@
         return "#" + r + g + b;
     }
 
-    // Helper expression snippet to read radii with "Link All 4 Corners" logic
+    // Helper expression snippet to read radii with "Link All 4 Corners" logic and proportional clamping
     function getRadiiSnippet() {
         return [
             'var link = ctrl.effect("Link All 4 Corners")("Checkbox").value > 0;',
@@ -212,7 +213,7 @@
             '[W / 2, (rTR - rBR) / 2, d / 2];'
         ].join('\n'),
 
-        // Corner Arc Segments (Discretized into strictly needed count)
+        // Corner Arc Segments (Strictly Needed Count)
         cornerSegmentSize: function (corner, S) {
             var delta = (Math.PI / 2) / S;
             var sinFactor = 2 * Math.sin(delta / 2);
@@ -224,16 +225,19 @@
                 'var R = ' + (corner === 'TL' ? 'rTL' : corner === 'TR' ? 'rTR' : corner === 'BR' ? 'rBR' : 'rBL') + ';',
                 'var seam = ctrl.effect("Seam Overlap (px)")("Slider").value;',
                 'var d = Math.abs(ctrl.effect("Extrusion Depth")("Slider").value);',
-                'var chordW = (R > 0.1) ? (R * ' + sinFactor + ' + seam) : 0;',
+                'var chordW = (R > 0.1) ? (R * ' + sinFactor.toFixed(8) + ' + seam) : 0.001;',
                 '[Math.max(0.1, chordW), Math.max(0.1, d)];'
             ].join('\n');
         },
 
         cornerSegmentPos: function (corner, k, S) {
-            var startAngle = this.cornerStartAngle(corner);
             var delta = (Math.PI / 2) / S;
-            var phi = startAngle + (k + 0.5) * delta;
+            var startAngle = (corner === "TR" ? 0 : corner === "BR" ? Math.PI / 2 : corner === "BL" ? Math.PI : 3 * Math.PI / 2);
+            var theta = startAngle + (k + 0.5) * delta;
             var rChordFactor = Math.cos(delta / 2);
+            var sinTheta = Math.sin(theta);
+            var cosTheta = Math.cos(theta);
+
             return [
                 'var ctrl = thisComp.layer("Master Controller");',
                 'var W = Math.max(1, ctrl.effect("Width")("Slider").value);',
@@ -243,42 +247,34 @@
                 'var d = ctrl.effect("Extrusion Depth")("Slider").value;',
                 'var cx = ' + (corner === 'TL' ? '-W/2 + R' : corner === 'TR' ? 'W/2 - R' : corner === 'BR' ? 'W/2 - R' : '-W/2 + R') + ';',
                 'var cy = ' + (corner === 'TL' ? '-H/2 + R' : corner === 'TR' ? '-H/2 + R' : corner === 'BR' ? 'H/2 - R' : 'H/2 - R') + ';',
-                'var rChord = R * ' + rChordFactor + ';',
-                'var phi = ' + phi + ';',
-                '[cx + rChord * Math.cos(phi), cy + rChord * Math.sin(phi), d / 2];'
+                'var rChord = R * ' + rChordFactor.toFixed(8) + ';',
+                'var x = cx + rChord * (' + sinTheta.toFixed(8) + ');',
+                'var y = cy - rChord * (' + cosTheta.toFixed(8) + ');',
+                '[x, y, d / 2];'
             ].join('\n');
         },
 
-        cornerSegmentRotY: function (corner, k, S) {
-            var startAngle = this.cornerStartAngle(corner);
-            var delta = (Math.PI / 2) / S;
-            var phi = startAngle + (k + 0.5) * delta;
-            return (phi * 180 / Math.PI) + 90;
+        cornerSegmentOpacity: function (corner) {
+            return [
+                'var ctrl = thisComp.layer("Master Controller");',
+                'var isExt = ctrl.effect("Extruded")("Checkbox").value > 0;',
+                'var W = Math.max(1, ctrl.effect("Width")("Slider").value);',
+                'var H = Math.max(1, ctrl.effect("Height")("Slider").value);',
+                getRadiiSnippet(),
+                'var R = ' + (corner === 'TL' ? 'rTL' : corner === 'TR' ? 'rTR' : corner === 'BR' ? 'rBR' : 'rBL') + ';',
+                '(isExt && R > 0.1) ? 100 : 0;'
+            ].join('\n');
         },
 
-        cornerSegmentColor: function (corner, k, S) {
-            var startAngle = this.cornerStartAngle(corner);
-            var delta = (Math.PI / 2) / S;
-            var phi = startAngle + (k + 0.5) * delta;
+        cornerSegmentColor: function (thetaRad) {
             return [
                 'var ctrl = thisComp.layer("Master Controller");',
                 'var baseCol = ctrl.effect("Edge Color")("Color").value;',
                 'var shd = ctrl.effect("Shading Intensity")("Slider").value / 100;',
-                'var phi = ' + phi + ';',
-                'var lightFactor = 1 - Math.cos(phi) * shd * 0.5;',
+                'var lightFactor = 1 - Math.cos(' + thetaRad.toFixed(8) + ') * shd * 0.5;',
                 'lightFactor = Math.max(0.2, Math.min(1.4, lightFactor));',
                 '[baseCol[0] * lightFactor, baseCol[1] * lightFactor, baseCol[2] * lightFactor, baseCol[3]];'
             ].join('\n');
-        },
-
-        cornerStartAngle: function (corner) {
-            switch (corner) {
-                case 'TL': return -Math.PI;
-                case 'TR': return -Math.PI / 2;
-                case 'BR': return 0;
-                case 'BL': return Math.PI / 2;
-            }
-            return 0;
         },
 
         // Screen Position in 3D scene (Placed snug on Cap without 3D track-matte conflicts)
@@ -603,20 +599,30 @@
             fxBScreenOp.name = "Back Screen Opacity";
             fxBScreenOp.property(1).setValue(100);
 
-            // 2. Helper to build Cap Shape Layer
-            function createCapShapeLayer(name, isTop) {
+            // 2. Helper to build Cap Shape Layers (Outer & Inner)
+            function createCapShapeLayer(name, isTop, isInner) {
                 var shapeLayer = targetComp.layers.addShape();
                 shapeLayer.name = name;
                 shapeLayer.threeDLayer = true;
                 shapeLayer.parent = ctrl;
-                shapeLayer.shy = false;
+                shapeLayer.shy = isInner ? params.shySecondary : false;
 
-                shapeLayer.property("ADBE Transform Group").property("ADBE Position").expression =
-                    isTop ? EXPRESSIONS.capTopPos : EXPRESSIONS.capBottomPos;
+                // Position expression
+                if (isTop) {
+                    shapeLayer.property("ADBE Transform Group").property("ADBE Position").expression =
+                        isInner
+                            ? 'var ctrl = thisComp.layer("Master Controller"); var off = ctrl.effect("Cap Z-Offset (px)")("Slider").value; var d = ctrl.effect("Extrusion Depth")("Slider").value; [0, 0, (d >= 0 ? -off + 0.08 : off - 0.08)];'
+                            : EXPRESSIONS.capTopPos;
+                } else {
+                    shapeLayer.property("ADBE Transform Group").property("ADBE Position").expression =
+                        isInner
+                            ? 'var ctrl = thisComp.layer("Master Controller"); var off = ctrl.effect("Cap Z-Offset (px)")("Slider").value; var d = ctrl.effect("Extrusion Depth")("Slider").value; [0, 0, d + (d >= 0 ? off - 0.08 : -off + 0.08)];'
+                            : EXPRESSIONS.capBottomPos;
+                }
 
-                if (!isTop) {
+                if (!isTop || isInner) {
                     shapeLayer.property("ADBE Transform Group").property("ADBE Opacity").expression =
-                        EXPRESSIONS.capBottomOpacity;
+                        EXPRESSIONS.capBottomOpacity; // Active only when Extruded is ON
                 }
 
                 var contents = shapeLayer.property("ADBE Root Vectors Group");
@@ -631,13 +637,17 @@
                 var fillProp = groupVectors.addProperty("ADBE Vector Graphic - Fill");
                 fillProp.name = "Cap Fill";
                 fillProp.property("ADBE Vector Fill Color").expression =
-                    'thisComp.layer("Master Controller").effect("' + (isTop ? "Cap Top Color" : "Cap Bottom Color") + '")("Color");';
+                    isInner
+                        ? 'thisComp.layer("Master Controller").effect("Edge Color")("Color");'
+                        : 'thisComp.layer("Master Controller").effect("' + (isTop ? "Cap Top Color" : "Cap Bottom Color") + '")("Color");';
 
                 return shapeLayer;
             }
 
-            var capTop = createCapShapeLayer("Cap Top", true);
-            var capBot = createCapShapeLayer("Cap Bottom", false);
+            var capTop = createCapShapeLayer("Cap Top", true, false);
+            var capTopInner = createCapShapeLayer("Cap Top Inner", true, true);
+            var capBot = createCapShapeLayer("Cap Bottom", false, false);
+            var capBotInner = createCapShapeLayer("Cap Bottom Inner", false, true);
 
             // 3. Helper to create Screen Layer with Self-Contained 2D Pre-comp Matte
             // (Works flawlessly in Classic 3D, Advanced 3D, and Cinema 4D without 3D track-matte conflicts)
@@ -792,17 +802,23 @@
             }
 
             createStraightWall("Wall Top", EXPRESSIONS.topWallSize, EXPRESSIONS.topWallPos, 90, 0, 0);
-            createStraightWall("Wall Bottom", EXPRESSIONS.bottomWallSize, EXPRESSIONS.bottomWallPos, 90, 180, 0);
-            createStraightWall("Wall Left", EXPRESSIONS.leftWallSize, EXPRESSIONS.leftWallPos, 90, -90, 0);
-            createStraightWall("Wall Right", EXPRESSIONS.rightWallSize, EXPRESSIONS.rightWallPos, 90, 90, 0);
+            createStraightWall("Wall Right", EXPRESSIONS.rightWallSize, EXPRESSIONS.rightWallPos, 90, 0, 90);
+            createStraightWall("Wall Bottom", EXPRESSIONS.bottomWallSize, EXPRESSIONS.bottomWallPos, 90, 0, 180);
+            createStraightWall("Wall Left", EXPRESSIONS.leftWallSize, EXPRESSIONS.leftWallPos, 90, 0, 270);
 
-            // 5. Create Corner Arc Segments (STRICTLY THE NEEDED COUNT, NO BLOAT)
+            // 5. Create Corner Arc Segments (STRICTLY THE NEEDED COUNT)
             var S = params.segments; // e.g. 6 to 24 strictly needed
-            var corners = ["TL", "TR", "BR", "BL"];
+            var corners = ["TR", "BR", "BL", "TL"];
 
             for (var c = 0; c < corners.length; c++) {
                 var cName = corners[c];
+                var delta = (Math.PI / 2) / S;
+                var startAngle = (cName === "TR" ? 0 : cName === "BR" ? Math.PI / 2 : cName === "BL" ? Math.PI : 3 * Math.PI / 2);
+
                 for (var k = 0; k < S; k++) {
+                    var thetaRad = startAngle + (k + 0.5) * delta;
+                    var thetaDeg = thetaRad * 180 / Math.PI;
+
                     var segLayer = targetComp.layers.addShape();
                     segLayer.name = "Arc " + cName + " [" + (k + 1) + "]";
                     segLayer.threeDLayer = true;
@@ -812,9 +828,9 @@
                     var tr = segLayer.property("ADBE Transform Group");
                     tr.property("ADBE Position").expression = EXPRESSIONS.cornerSegmentPos(cName, k, S);
                     tr.property("ADBE Rotate X").setValue(90);
-                    tr.property("ADBE Rotate Y").setValue(EXPRESSIONS.cornerSegmentRotY(cName, k, S));
-                    tr.property("ADBE Rotate Z").setValue(0);
-                    tr.property("ADBE Opacity").expression = EXPRESSIONS.straightWallOpacity;
+                    tr.property("ADBE Rotate Y").setValue(0);
+                    tr.property("ADBE Rotate Z").setValue(thetaDeg);
+                    tr.property("ADBE Opacity").expression = EXPRESSIONS.cornerSegmentOpacity(cName);
 
                     var contents = segLayer.property("ADBE Root Vectors Group");
                     var grp = contents.addProperty("ADBE Vector Group");
@@ -824,7 +840,7 @@
                     rect.property("ADBE Vector Rect Size").expression = EXPRESSIONS.cornerSegmentSize(cName, S);
 
                     var fill = gVecs.addProperty("ADBE Vector Graphic - Fill");
-                    fill.property("ADBE Vector Fill Color").expression = EXPRESSIONS.cornerSegmentColor(cName, k, S);
+                    fill.property("ADBE Vector Fill Color").expression = EXPRESSIONS.cornerSegmentColor(thetaRad);
                 }
             }
 
