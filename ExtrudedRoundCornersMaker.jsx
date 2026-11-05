@@ -1,26 +1,135 @@
 /**
- * Extruded Round Corners Maker v1.2.0
- * Adobe After Effects Script & ScriptUI Panel
+ * ============================================================================
+ * EXTRUDED ROUND CORNERS MAKER v2.0.0
+ * Adobe After Effects Script & ScriptUI Dockable Panel
  * 
- * Features:
- * - 2D & 3D Extruded Rounded Rectangle generator with independent corner radii.
- * - Non-C4D / Classic 3D & Advanced 3D native geometry: 2D segment strips with strictly needed count.
- * - Symmetrical perimeter math: Rotate X = 90, Rotate Y = 0, Rotate Z = continuous perimeter angle (0-360 deg).
- * - Inner sides of both caps match the Edge Color.
- * - Full Dynamic Timeline & Expression Animation: Width, Height, Depth, Radii, Colors, Scale, Offset.
- * - "Link All 4 Corners" boolean control: when active, all 4 corners use values from Top-Left.
- * - Universal 2D Pre-comp Screen Wrapper: works in Classic 3D & Advanced 3D without 3D track-matte breaking.
- * - Anti-gap & anti-clipping precision math (sub-pixel seam overlap & cap Z-offset).
+ * INSTALLATION:
+ * -------------
+ * In Adobe After Effects, go to:
+ *   File > Scripts > Install ScriptUI Panel...
+ * Select this file ("ExtrudedRoundCornersMaker.jsx"), then restart After Effects.
+ * Access the tool from:
+ *   Window > ExtrudedRoundCornersMaker.jsx
  * 
- * Compatible with Adobe After Effects CC 2018 through 2026+.
+ * Reference Repository (2D Geometry):
+ *   https://github.com/work2survive/AECustomRoundedRect
+ * Planned Repository:
+ *   https://github.com/work2survive/Extruded-Round-Corners-Maker
+ * 
+ * Compatibility: Adobe After Effects CC 2018 through CC 2026+ (All Languages)
+ * Author:        work2survive & Antigravity
+ * Version:       2.0.0
+ * ============================================================================
+ * 
+ * COMPREHENSIVE ARCHITECTURAL DOCUMENTATION:
+ * ------------------------------------------
+ * This tool proceduralizes the creation of true 3D extruded rounded rectangles
+ * inside native Adobe After Effects compositions without relying on third-party
+ * plugins, external 3D software (Cinema 4D / Blender), or slow Ray-traced 3D
+ * renderers. It operates purely within Classic 3D and Advanced 3D rendering
+ * engines using vector shape layers, 3D affine matrix transformations, and
+ * real-time expression drivers.
+ * 
+ * MATHEMATICAL FOUNDATIONS:
+ * -------------------------
+ * 1. 2D Geometry & Proportional Radius Clamping (W3C CSS Backgrounds & Borders Level 3):
+ *    When custom corner radii exceed the rectangular dimensions, standard Bézier
+ *    curves intersect and produce inverted self-crossing loops. This script
+ *    applies the W3C CSS border-radius proportional scaling formula across all
+ *    four corners:
+ *        topSum    = rTL + rTR
+ *        bottomSum = rBL + rBR
+ *        leftSum   = rTL + rBL
+ *        rightSum  = rTR + rBR
+ *        f = min(1.0, W / topSum, W / bottomSum, H / leftSum, H / rightSum)
+ *        rTL *= f; rTR *= f; rBR *= f; rBL *= f;
+ *    The front and back cap shapes utilize an 8-point closed Bézier path with
+ *    tangent factor kappa = (4/3) * (sqrt(2) - 1) =~ 0.5522847498307936.
+ * 
+ * 2. Extruded Corners via Segmented Square Strips & Z Anchor Point Displacement:
+ *    Per the explicit engineering specification, each corner arc is subdivided
+ *    into S square shape strips (min 6, max 15, default 6).
+ *    Instead of relying on orientation properties or intermediate nested nulls:
+ *      a. Each segment square is parented to the Master Controller.
+ *      b. Its position [X, Y, Z] is placed directly at the center of that
+ *         corner's radius [cx, cy, depth / 2].
+ *      c. Its Anchor Point is displaced along the local Z axis by the negative
+ *         apothem (inradius to chord midpoint):
+ *             rChord = R * cos(delta / 2)
+ *             Anchor Point = [0, 0, -rChord]
+ *      d. The strip is rotated using X Rotation (90 deg) and Z Rotation (thetaDeg):
+ *         - X Rotation = 90 deg flips the strip perpendicular to the XY plane
+ *           so its height spans along the extrusion depth axis (world Z).
+ *         - Z Rotation = thetaDeg aims the local Z axis along the radial normal
+ *           vector [sin(theta), -cos(theta), 0] in the XY plane.
+ *         - The -rChord displacement on Anchor Point pushes the square outward
+ *           to the chord perimeter, perfectly tangent to the circular arc!
+ *         - NO orientation properties are touched, preserving pure Euler rotation
+ *           matrices for optimal AE performance.
+ * 
+ * 3. Dynamic Straight Corner Fallback:
+ *    When any corner's rounding checkbox is toggled off (or animated to 0):
+ *      a. Its segmented arc squares instantly set their opacity to 0%.
+ *      b. The adjacent straight edge walls dynamically extend their span
+ *         (since rCorner becomes 0) to meet at the sharp 90-degree corner vertex!
+ * 
+ * 4. Extrusion Depth (Positive & Negative Values):
+ *    Continuous extrusion depth slider supports both positive and negative values.
+ *    All cap positions, wall positions, and segment heights dynamically adapt
+ *    without flipping normals or causing inverted faces.
+ * 
+ * 5. Fine Tuning & Anti-Clipping Controls:
+ *    - Gap Tolerance (px): Adds an adjustable seam buffer to chord widths and
+ *      wall lengths to eliminate GPU rasterization hairline gaps.
+ *    - Edge to Sides Distance (px): Adjusts cap-to-edge separation to eliminate
+ *      edge clipping at perpendicular 90-degree junctions.
+ *    - Inner vs Outer Distance (px): Micro-separation between internal and
+ *      external faces to eliminate coplanar Z-fighting.
+ * 
+ * 6. Shading & Colors:
+ *    - Front Face: Dark Red (#8B0000)
+ *    - Back Face: Dark Green (#006400)
+ *    - Edge & Arc Strips: Blue (#1E88E5)
+ *    - "Paint inner sides using edge color": Dynamically creates interior cap
+ *      faces sharing the edge color.
+ * 
+ * 7. Real-Time Occlusion Culling:
+ *    Calculates dot product between active camera view vector and face world
+ *    normal vector: dot = vCam . nWorld. Non-visible backfaces are culled (opacity = 0)
+ *    to maximize rendering speed.
+ * 
+ * 8. Debug Text Layers:
+ *    Generates 3D text layers reading "front" and "back" aligned on the cap faces
+ *    for effortless orientation verification.
+ * ============================================================================
  */
 
 (function (thisObj) {
+    "use strict";
 
+    // ========================================================================
+    // GLOBAL CONSTANTS & IDENTITY
+    // ========================================================================
     var SCRIPT_NAME = "Extruded Round Corners Maker";
-    var SCRIPT_VERSION = "1.2.0";
+    var SCRIPT_VERSION = "2.0.0";
+    var GITHUB_REF_URL = "https://github.com/work2survive/AECustomRoundedRect";
+    var GITHUB_REPO_URL = "https://github.com/work2survive/Extruded-Round-Corners-Maker";
 
-    // Helper: Hex string to [R, G, B, A] normalized (0-1)
+    // Standard cubic Bézier constant for 90-degree circular arc approximation:
+    // kappa = 4/3 * (sqrt(2) - 1) =~ 0.5522847498307936
+    var KAPPA = 0.5522847498307936;
+
+
+    // ========================================================================
+    // COLOR HELPERS
+    // ========================================================================
+
+    /**
+     * Converts a hex string (e.g. "#1E88E5" or "#FFF") to normalized RGBA [r, g, b, a] (0.0 to 1.0).
+     * @param {string} hex - The hex color string.
+     * @param {number} [alpha=1.0] - Optional opacity value between 0.0 and 1.0.
+     * @returns {Array<number>} Array of 4 floats [r, g, b, a].
+     */
     function hexToRgba(hex, alpha) {
         if (alpha === undefined) alpha = 1.0;
         hex = hex.replace("#", "");
@@ -33,7 +142,11 @@
         return [r, g, b, alpha];
     }
 
-    // Helper: Normalized [R, G, B] to Hex
+    /**
+     * Converts normalized RGBA array [r, g, b] (0.0 to 1.0) into an uppercase Hex string "#RRGGBB".
+     * @param {Array<number>} rgba - Normalized RGBA array.
+     * @returns {string} Hex color string.
+     */
     function rgbaToHex(rgba) {
         var r = Math.round((rgba[0] || 0) * 255).toString(16);
         var g = Math.round((rgba[1] || 0) * 255).toString(16);
@@ -41,427 +154,391 @@
         if (r.length === 1) r = "0" + r;
         if (g.length === 1) g = "0" + g;
         if (b.length === 1) b = "0" + b;
-        return "#" + r + g + b;
+        return ("#" + r + g + b).toUpperCase();
     }
 
-    // Helper expression snippet to read radii with "Link All 4 Corners" logic and proportional clamping
+
+    // ========================================================================
+    // REUSABLE EXPRESSION SNIPPETS
+    // ========================================================================
+
+    /**
+     * Generates the universal corner radii evaluation snippet.
+     * Evaluates Master Round switch, Link All Corners switch, per-corner toggles,
+     * and applies W3C CSS proportional scaling to guarantee no self-intersections.
+     * Uses property index (1) for localization safety across all AE languages.
+     * @returns {string} The expression snippet code.
+     */
     function getRadiiSnippet() {
         return [
-            'var link = ctrl.effect("Link All 4 Corners")("Checkbox").value > 0;',
-            'var rTL = Math.max(0, ctrl.effect("Radius Top-Left")("Slider").value);',
-            'var rTR = Math.max(0, link ? rTL : ctrl.effect("Radius Top-Right")("Slider").value);',
-            'var rBR = Math.max(0, link ? rTL : ctrl.effect("Radius Bottom-Right")("Slider").value);',
-            'var rBL = Math.max(0, link ? rTL : ctrl.effect("Radius Bottom-Left")("Slider").value);',
-            'var maxTop = rTL + rTR; if (maxTop > W) { var s = W / maxTop; rTL *= s; rTR *= s; }',
-            'var maxBot = rBL + rBR; if (maxBot > W) { var s = W / maxBot; rBL *= s; rBR *= s; }',
-            'var maxLeft = rTL + rBL; if (maxLeft > H) { var s = H / maxLeft; rTL *= s; rBL *= s; }',
-            'var maxRight = rTR + rBR; if (maxRight > H) { var s = H / maxRight; rTR *= s; rBR *= s; }'
+            '// --- Universal Corner Radii Evaluation (W3C CSS Standard) ---',
+            'var masterRound = true;',
+            'try { masterRound = ctrl.effect("Round Corners")(1).value > 0; } catch(e) { masterRound = true; }',
+            'var linkAll = false;',
+            'try { linkAll = ctrl.effect("Link All Corners")(1).value > 0; } catch(e) { linkAll = false; }',
+            '',
+            'var isTL = masterRound;',
+            'try { isTL = masterRound && (ctrl.effect("Round Top-Left")(1).value > 0); } catch(e) { isTL = masterRound; }',
+            'var isTR = masterRound;',
+            'try { isTR = masterRound && (linkAll ? isTL : (ctrl.effect("Round Top-Right")(1).value > 0)); } catch(e) { isTR = masterRound; }',
+            'var isBR = masterRound;',
+            'try { isBR = masterRound && (linkAll ? isTL : (ctrl.effect("Round Bottom-Right")(1).value > 0)); } catch(e) { isBR = masterRound; }',
+            'var isBL = masterRound;',
+            'try { isBL = masterRound && (linkAll ? isTL : (ctrl.effect("Round Bottom-Left")(1).value > 0)); } catch(e) { isBL = masterRound; }',
+            '',
+            'var rawTL = 200, rawTR = 100, rawBR = 50, rawBL = 25;',
+            'try { rawTL = ctrl.effect("Radius Top-Left")(1).value; } catch(e) { rawTL = 200; }',
+            'try { rawTR = ctrl.effect("Radius Top-Right")(1).value; } catch(e) { rawTR = rawTL; }',
+            'try { rawBR = ctrl.effect("Radius Bottom-Right")(1).value; } catch(e) { rawBR = rawTL; }',
+            'try { rawBL = ctrl.effect("Radius Bottom-Left")(1).value; } catch(e) { rawBL = rawTL; }',
+            '',
+            'var rTL = isTL ? Math.max(0, rawTL) : 0;',
+            'var rTR = isTR ? Math.max(0, linkAll ? rTL : rawTR) : 0;',
+            'var rBR = isBR ? Math.max(0, linkAll ? rTL : rawBR) : 0;',
+            'var rBL = isBL ? Math.max(0, linkAll ? rTL : rawBL) : 0;',
+            '',
+            '// W3C Proportional Overlap Scaling (§5.5): prevent radii from exceeding dimensions',
+            'var topSum    = rTL + rTR;',
+            'var bottomSum = rBL + rBR;',
+            'var leftSum   = rTL + rBL;',
+            'var rightSum  = rTR + rBR;',
+            'var fScale = 1.0;',
+            'if (topSum > W && topSum > 0)       fScale = Math.min(fScale, W / topSum);',
+            'if (bottomSum > W && bottomSum > 0) fScale = Math.min(fScale, W / bottomSum);',
+            'if (leftSum > H && leftSum > 0)     fScale = Math.min(fScale, H / leftSum);',
+            'if (rightSum > H && rightSum > 0)   fScale = Math.min(fScale, H / rightSum);',
+            'rTL *= fScale;',
+            'rTR *= fScale;',
+            'rBR *= fScale;',
+            'rBL *= fScale;'
         ].join('\n');
     }
 
-    // Expression templates
+    /**
+     * Generates real-time occlusion culling snippet for performance optimization.
+     * Computes dot product between world surface normal and vector to camera.
+     * @param {string} localNormalVecStr - Local normal vector string, e.g. '[0, 0, 1]'.
+     * @returns {string} The expression snippet code.
+     */
+    function getOcclusionSnippet(localNormalVecStr) {
+        return [
+            '// --- Real-Time Camera Occlusion Culling ---',
+            'var isVisible = true;',
+            'var doOcclude = false;',
+            'try { doOcclude = ctrl.effect("Occlusion Culling")(1).value > 0; } catch(e) { doOcclude = false; }',
+            'if (doOcclude) {',
+            '    try {',
+            '        var cam = thisComp.activeCamera;',
+            '        var camPos = cam ? cam.toWorld([0, 0, 0]) : [thisComp.width / 2, thisComp.height / 2, -2000];',
+            '        var layerCenter = toWorld(anchorPoint);',
+            '        var vCam = [camPos[0] - layerCenter[0], camPos[1] - layerCenter[1], camPos[2] - layerCenter[2]];',
+            '        var nWorld = toWorldVec(' + localNormalVecStr + ');',
+            '        var dot = vCam[0] * nWorld[0] + vCam[1] * nWorld[1] + vCam[2] * nWorld[2];',
+            '        isVisible = (dot >= 0);',
+            '    } catch(err) {',
+            '        isVisible = true;',
+            '    }',
+            '}'
+        ].join('\n');
+    }
+
+
+    // ========================================================================
+    // EXPRESSION TEMPLATES
+    // ========================================================================
     var EXPRESSIONS = {
 
-        // Expression for Cap shape path (Top and Bottom caps)
+        /**
+         * Dynamic Cap Path Expression (AECustomRoundedRect reference):
+         * Generates an 8-point parametric Bézier closed contour centered at [0, 0].
+         */
         capPath: [
             'var ctrl = thisComp.layer("Master Controller");',
-            'var W = Math.max(1, ctrl.effect("Width")("Slider").value);',
-            'var H = Math.max(1, ctrl.effect("Height")("Slider").value);',
+            'var W = 600, H = 300;',
+            'try { W = Math.max(1, ctrl.effect("Width")(1).value); } catch(e) {}',
+            'try { H = Math.max(1, ctrl.effect("Height")(1).value); } catch(e) {}',
             getRadiiSnippet(),
             '',
-            'var k = 0.5522847498;',
-            'var kTL = rTL * k;',
-            'var kTR = rTR * k;',
-            'var kBR = rBR * k;',
-            'var kBL = rBL * k;',
+            'var K = ' + KAPPA.toFixed(10) + ';',
+            'var halfW = W / 2;',
+            'var halfH = H / 2;',
+            'var xMin = -halfW;',
+            'var xMax =  halfW;',
+            'var yMin = -halfH;',
+            'var yMax =  halfH;',
             '',
-            'var pts = [',
-            '  [-W/2 + rTL, -H/2],',
-            '  [W/2 - rTR, -H/2],',
-            '  [W/2, -H/2 + rTR],',
-            '  [W/2, H/2 - rBR],',
-            '  [W/2 - rBR, H/2],',
-            '  [-W/2 + rBL, H/2],',
-            '  [-W/2, H/2 - rBL],',
-            '  [-W/2, -H/2 + rTL]',
+            '// 8 vertices arranged clockwise starting from top edge (matching AECustomRoundedRect)',
+            'var points = [',
+            '    [xMin + rTL, yMin],        // P0: Top edge, TL curve end',
+            '    [xMax - rTR, yMin],        // P1: Top edge, TR curve start',
+            '    [xMax, yMin + rTR],        // P2: Right edge, TR curve end',
+            '    [xMax, yMax - rBR],        // P3: Right edge, BR curve start',
+            '    [xMax - rBR, yMax],        // P4: Bottom edge, BR curve end',
+            '    [xMin + rBL, yMax],        // P5: Bottom edge, BL curve start',
+            '    [xMin, yMax - rBL],        // P6: Left edge, BL curve end',
+            '    [xMin, yMin + rTL]         // P7: Left edge, TL curve start',
             '];',
             '',
-            'var inT = [',
-            '  [-kTL, 0],',
-            '  [0, 0],',
-            '  [0, -kTR],',
-            '  [0, 0],',
-            '  [kBR, 0],',
-            '  [0, 0],',
-            '  [0, kBL],',
-            '  [0, 0]',
+            'var inTangents = [',
+            '    [-rTL * K, 0],             // P0: receives TL curve from P7',
+            '    [0, 0],                    // P1: straight line along top',
+            '    [0, -rTR * K],             // P2: receives TR curve from P1',
+            '    [0, 0],                    // P3: straight line along right',
+            '    [rBR * K, 0],              // P4: receives BR curve from P3',
+            '    [0, 0],                    // P5: straight line along bottom',
+            '    [0, rBL * K],              // P6: receives BL curve from P5',
+            '    [0, 0]                     // P7: straight line along left',
             '];',
             '',
-            'var outT = [',
-            '  [0, 0],',
-            '  [kTR, 0],',
-            '  [0, 0],',
-            '  [0, kBR],',
-            '  [0, 0],',
-            '  [-kBL, 0],',
-            '  [0, 0],',
-            '  [0, -kTL]',
+            'var outTangents = [',
+            '    [0, 0],                    // P0: straight line to P1',
+            '    [rTR * K, 0],              // P1: outgoing curve towards P2',
+            '    [0, 0],                    // P2: straight line to P3',
+            '    [0, rBR * K],              // P3: outgoing curve towards P4',
+            '    [0, 0],                    // P4: straight line to P5',
+            '    [-rBL * K, 0],             // P5: outgoing curve towards P6',
+            '    [0, 0],                    // P6: straight line to P7',
+            '    [0, -rTL * K]              // P7: outgoing curve towards P0',
             '];',
             '',
-            'createPath(pts, inT, outT, true);'
+            'createPath(points, inTangents, outTangents, true);'
         ].join('\n'),
 
-        // Cap Z-Positions
-        capTopPos: [
-            'var ctrl = thisComp.layer("Master Controller");',
-            'var off = ctrl.effect("Cap Z-Offset (px)")("Slider").value;',
-            'var d = ctrl.effect("Extrusion Depth")("Slider").value;',
-            '[0, 0, (d >= 0 ? -off : off)];'
-        ].join('\n'),
+        /**
+         * Cap Position: Computes Z positioning with continuous negative extrusion support.
+         */
+        capPosition: function (isBack, isInner) {
+            return [
+                'var ctrl = thisComp.layer("Master Controller");',
+                'var edgeSidesDist = 0.2;',
+                'try { edgeSidesDist = ctrl.effect("Edge to Sides Distance (px)")(1).value; } catch(e) {}',
+                'var innerOuterDist = 0.1;',
+                'try { innerOuterDist = ctrl.effect("Inner vs Outer Distance (px)")(1).value; } catch(e) {}',
+                'var d = 60;',
+                'try { d = ctrl.effect("Extrusion Depth")(1).value; } catch(e) {}',
+                '',
+                (isBack
+                    ? (isInner
+                        ? 'var baseZ = d + (d >= 0 ? edgeSidesDist - innerOuterDist : -edgeSidesDist + innerOuterDist);'
+                        : 'var baseZ = d + (d >= 0 ? edgeSidesDist : -edgeSidesDist);')
+                    : (isInner
+                        ? 'var baseZ = (d >= 0 ? -edgeSidesDist + innerOuterDist : edgeSidesDist - innerOuterDist);'
+                        : 'var baseZ = (d >= 0 ? -edgeSidesDist : edgeSidesDist);')),
+                '[0, 0, baseZ];'
+            ].join('\n');
+        },
 
-        capBottomPos: [
-            'var ctrl = thisComp.layer("Master Controller");',
-            'var off = ctrl.effect("Cap Z-Offset (px)")("Slider").value;',
-            'var d = ctrl.effect("Extrusion Depth")("Slider").value;',
-            '[0, 0, d + (d >= 0 ? off : -off)];'
-        ].join('\n'),
+        /**
+         * Cap Opacity Expression: Combines master extrusion switch with occlusion test.
+         */
+        capOpacity: function (isBack) {
+            var normalStr = isBack ? '[0, 0, 1]' : '[0, 0, -1]';
+            return [
+                'var ctrl = thisComp.layer("Master Controller");',
+                'var isExt = true;',
+                'try { isExt = ctrl.effect("Extruded")(1).value > 0; } catch(e) {}',
+                (isBack ? 'if (!isExt) { 0; } else {' : '{'),
+                getOcclusionSnippet(normalStr),
+                '    isVisible ? 100 : 0;',
+                '}'
+            ].join('\n');
+        },
 
-        capBottomOpacity: [
-            'var ctrl = thisComp.layer("Master Controller");',
-            'ctrl.effect("Extruded")("Checkbox").value > 0 ? 100 : 0;'
-        ].join('\n'),
+        /**
+         * Straight Edge Walls: Size Expression.
+         * All 4 walls use unified [depth, span] format for consistent 3D orientation.
+         */
+        straightWallSize: function (edgeKey) {
+            return [
+                'var ctrl = thisComp.layer("Master Controller");',
+                'var W = 600, H = 300;',
+                'try { W = Math.max(1, ctrl.effect("Width")(1).value); } catch(e) {}',
+                'try { H = Math.max(1, ctrl.effect("Height")(1).value); } catch(e) {}',
+                getRadiiSnippet(),
+                'var seam = 0.5;',
+                'try { seam = ctrl.effect("Gap Tolerance (px)")(1).value; } catch(e) {}',
+                'var d = 60;',
+                'try { d = Math.abs(ctrl.effect("Extrusion Depth")(1).value); } catch(e) {}',
+                (edgeKey === "top"
+                    ? 'var span = Math.max(0.1, W - rTL - rTR + seam); [Math.max(0.1, d), span];'
+                    : edgeKey === "bottom"
+                    ? 'var span = Math.max(0.1, W - rBL - rBR + seam); [Math.max(0.1, d), span];'
+                    : edgeKey === "left"
+                    ? 'var span = Math.max(0.1, H - rTL - rBL + seam); [Math.max(0.1, d), span];'
+                    : 'var span = Math.max(0.1, H - rTR - rBR + seam); [Math.max(0.1, d), span];')
+            ].join('\n');
+        },
 
-        straightWallOpacity: [
-            'var ctrl = thisComp.layer("Master Controller");',
-            'ctrl.effect("Extruded")("Checkbox").value > 0 ? 100 : 0;'
-        ].join('\n'),
+        /**
+         * Straight Edge Walls: Position Expression.
+         * Positions wall midpoint directly on the perimeter bounding edge.
+         */
+        straightWallPos: function (edgeKey) {
+            return [
+                'var ctrl = thisComp.layer("Master Controller");',
+                'var W = 600, H = 300;',
+                'try { W = ctrl.effect("Width")(1).value; } catch(e) {}',
+                'try { H = ctrl.effect("Height")(1).value; } catch(e) {}',
+                getRadiiSnippet(),
+                'var d = 60;',
+                'try { d = ctrl.effect("Extrusion Depth")(1).value; } catch(e) {}',
+                (edgeKey === "top"
+                    ? '[(rTL - rTR) / 2, -H / 2, d / 2];'
+                    : edgeKey === "bottom"
+                    ? '[(rBL - rBR) / 2,  H / 2, d / 2];'
+                    : edgeKey === "left"
+                    ? '[-W / 2, (rTL - rBL) / 2, d / 2];'
+                    : '[ W / 2, (rTR - rBR) / 2, d / 2];')
+            ].join('\n');
+        },
 
-        // Straight Wall Sizes & Positions
-        topWallSize: [
-            'var ctrl = thisComp.layer("Master Controller");',
-            'var W = Math.max(1, ctrl.effect("Width")("Slider").value);',
-            'var H = Math.max(1, ctrl.effect("Height")("Slider").value);',
-            getRadiiSnippet(),
-            'var seam = ctrl.effect("Seam Overlap (px)")("Slider").value;',
-            'var d = Math.abs(ctrl.effect("Extrusion Depth")("Slider").value);',
-            '[Math.max(0.1, W - rTL - rTR + seam), Math.max(0.1, d)];'
-        ].join('\n'),
+        /**
+         * Straight Edge Walls: Opacity Expression.
+         */
+        straightWallOpacity: function () {
+            return [
+                'var ctrl = thisComp.layer("Master Controller");',
+                'var isExt = true;',
+                'try { isExt = ctrl.effect("Extruded")(1).value > 0; } catch(e) {}',
+                'if (!isExt) { 0; } else {',
+                getOcclusionSnippet('[0, 0, 1]'),
+                '    isVisible ? 100 : 0;',
+                '}'
+            ].join('\n');
+        },
 
-        topWallPos: [
-            'var ctrl = thisComp.layer("Master Controller");',
-            'var W = ctrl.effect("Width")("Slider").value;',
-            'var H = ctrl.effect("Height")("Slider").value;',
-            getRadiiSnippet(),
-            'var d = ctrl.effect("Extrusion Depth")("Slider").value;',
-            '[(rTL - rTR) / 2, -H / 2, d / 2];'
-        ].join('\n'),
+        /**
+         * Segmented Corner Arc Strip: Position Expression.
+         * Directly sets position to the corner radius center [cx, cy, d/2] in Master Controller space!
+         * Displacement to the chord perimeter is accomplished via the Z Anchor Point property!
+         */
+        cornerSegmentPos: function (cornerId) {
+            return [
+                'var ctrl = thisComp.layer("Master Controller");',
+                'var W = 600, H = 300;',
+                'try { W = Math.max(1, ctrl.effect("Width")(1).value); } catch(e) {}',
+                'try { H = Math.max(1, ctrl.effect("Height")(1).value); } catch(e) {}',
+                getRadiiSnippet(),
+                'var R = ' + (cornerId === 'TL' ? 'rTL' : cornerId === 'TR' ? 'rTR' : cornerId === 'BR' ? 'rBR' : 'rBL') + ';',
+                'var d = 60;',
+                'try { d = ctrl.effect("Extrusion Depth")(1).value; } catch(e) {}',
+                'var cx = ' + (cornerId === 'TL' ? '-W/2 + R' : cornerId === 'TR' ? 'W/2 - R' : cornerId === 'BR' ? 'W/2 - R' : '-W/2 + R') + ';',
+                'var cy = ' + (cornerId === 'TL' ? '-H/2 + R' : cornerId === 'TR' ? '-H/2 + R' : cornerId === 'BR' ? 'H/2 - R' : 'H/2 - R') + ';',
+                '[cx, cy, d / 2];'
+            ].join('\n');
+        },
 
-        bottomWallSize: [
-            'var ctrl = thisComp.layer("Master Controller");',
-            'var W = Math.max(1, ctrl.effect("Width")("Slider").value);',
-            'var H = Math.max(1, ctrl.effect("Height")("Slider").value);',
-            getRadiiSnippet(),
-            'var seam = ctrl.effect("Seam Overlap (px)")("Slider").value;',
-            'var d = Math.abs(ctrl.effect("Extrusion Depth")("Slider").value);',
-            '[Math.max(0.1, W - rBL - rBR + seam), Math.max(0.1, d)];'
-        ].join('\n'),
+        /**
+         * Segmented Corner Arc Strip: Anchor Point Expression.
+         * Displaces the square strip along local Z axis by -rChord = -R * cos(delta/2).
+         * This pushes the square strip exactly onto the circular arc chord!
+         */
+        cornerSegmentAnchor: function (cornerId, S) {
+            var delta = (Math.PI / 2) / S;
+            var rChordFactor = Math.cos(delta / 2);
+            return [
+                'var ctrl = thisComp.layer("Master Controller");',
+                'var W = 600, H = 300;',
+                'try { W = Math.max(1, ctrl.effect("Width")(1).value); } catch(e) {}',
+                'try { H = Math.max(1, ctrl.effect("Height")(1).value); } catch(e) {}',
+                getRadiiSnippet(),
+                'var R = ' + (cornerId === 'TL' ? 'rTL' : cornerId === 'TR' ? 'rTR' : cornerId === 'BR' ? 'rBR' : 'rBL') + ';',
+                'var rChord = R * ' + rChordFactor.toFixed(8) + ';',
+                '[0, 0, -rChord];'
+            ].join('\n');
+        },
 
-        bottomWallPos: [
-            'var ctrl = thisComp.layer("Master Controller");',
-            'var W = ctrl.effect("Width")("Slider").value;',
-            'var H = ctrl.effect("Height")("Slider").value;',
-            getRadiiSnippet(),
-            'var d = ctrl.effect("Extrusion Depth")("Slider").value;',
-            '[(rBL - rBR) / 2, H / 2, d / 2];'
-        ].join('\n'),
-
-        leftWallSize: [
-            'var ctrl = thisComp.layer("Master Controller");',
-            'var W = Math.max(1, ctrl.effect("Width")("Slider").value);',
-            'var H = Math.max(1, ctrl.effect("Height")("Slider").value);',
-            getRadiiSnippet(),
-            'var seam = ctrl.effect("Seam Overlap (px)")("Slider").value;',
-            'var d = Math.abs(ctrl.effect("Extrusion Depth")("Slider").value);',
-            '[Math.max(0.1, H - rTL - rBL + seam), Math.max(0.1, d)];'
-        ].join('\n'),
-
-        leftWallPos: [
-            'var ctrl = thisComp.layer("Master Controller");',
-            'var W = ctrl.effect("Width")("Slider").value;',
-            'var H = ctrl.effect("Height")("Slider").value;',
-            getRadiiSnippet(),
-            'var d = ctrl.effect("Extrusion Depth")("Slider").value;',
-            '[-W / 2, (rTL - rBL) / 2, d / 2];'
-        ].join('\n'),
-
-        rightWallSize: [
-            'var ctrl = thisComp.layer("Master Controller");',
-            'var W = Math.max(1, ctrl.effect("Width")("Slider").value);',
-            'var H = Math.max(1, ctrl.effect("Height")("Slider").value);',
-            getRadiiSnippet(),
-            'var seam = ctrl.effect("Seam Overlap (px)")("Slider").value;',
-            'var d = Math.abs(ctrl.effect("Extrusion Depth")("Slider").value);',
-            '[Math.max(0.1, H - rTR - rBR + seam), Math.max(0.1, d)];'
-        ].join('\n'),
-
-        rightWallPos: [
-            'var ctrl = thisComp.layer("Master Controller");',
-            'var W = ctrl.effect("Width")("Slider").value;',
-            'var H = ctrl.effect("Height")("Slider").value;',
-            getRadiiSnippet(),
-            'var d = ctrl.effect("Extrusion Depth")("Slider").value;',
-            '[W / 2, (rTR - rBR) / 2, d / 2];'
-        ].join('\n'),
-
-        // Corner Arc Segments (Strictly Needed Count)
-        cornerSegmentSize: function (corner, S) {
+        /**
+         * Segmented Corner Arc Strip: Rectangle Size Expression.
+         * Width matches chord length 2 * R * sin(delta/2) + gapTolerance.
+         * Height matches extrusion depth Math.abs(d).
+         */
+        cornerSegmentSize: function (cornerId, S) {
             var delta = (Math.PI / 2) / S;
             var sinFactor = 2 * Math.sin(delta / 2);
             return [
                 'var ctrl = thisComp.layer("Master Controller");',
-                'var W = Math.max(1, ctrl.effect("Width")("Slider").value);',
-                'var H = Math.max(1, ctrl.effect("Height")("Slider").value);',
+                'var W = 600, H = 300;',
+                'try { W = Math.max(1, ctrl.effect("Width")(1).value); } catch(e) {}',
+                'try { H = Math.max(1, ctrl.effect("Height")(1).value); } catch(e) {}',
                 getRadiiSnippet(),
-                'var R = ' + (corner === 'TL' ? 'rTL' : corner === 'TR' ? 'rTR' : corner === 'BR' ? 'rBR' : 'rBL') + ';',
-                'var seam = ctrl.effect("Seam Overlap (px)")("Slider").value;',
-                'var d = Math.abs(ctrl.effect("Extrusion Depth")("Slider").value);',
+                'var R = ' + (cornerId === 'TL' ? 'rTL' : cornerId === 'TR' ? 'rTR' : cornerId === 'BR' ? 'rBR' : 'rBL') + ';',
+                'var seam = 0.5;',
+                'try { seam = ctrl.effect("Gap Tolerance (px)")(1).value; } catch(e) {}',
+                'var d = 60;',
+                'try { d = Math.abs(ctrl.effect("Extrusion Depth")(1).value); } catch(e) {}',
                 'var chordW = (R > 0.1) ? (R * ' + sinFactor.toFixed(8) + ' + seam) : 0.001;',
                 '[Math.max(0.1, chordW), Math.max(0.1, d)];'
             ].join('\n');
         },
 
-        cornerSegmentPos: function (corner, k, S) {
-            var delta = (Math.PI / 2) / S;
-            var startAngle = (corner === "TR" ? 0 : corner === "BR" ? Math.PI / 2 : corner === "BL" ? Math.PI : 3 * Math.PI / 2);
-            var theta = startAngle + (k + 0.5) * delta;
-            var rChordFactor = Math.cos(delta / 2);
-            var sinTheta = Math.sin(theta);
-            var cosTheta = Math.cos(theta);
-
+        /**
+         * Segmented Corner Arc Strip: Opacity Expression.
+         * When this corner is unchecked ("not rounded"), this expression instantly hides
+         * the segment strips (0% opacity) so the straight walls cleanly meet at 90 degrees!
+         */
+        cornerSegmentOpacity: function (cornerId) {
+            var cornerRoundCheck = (cornerId === "TL" ? 'isTL' : cornerId === "TR" ? 'isTR' : cornerId === "BR" ? 'isBR' : 'isBL');
+            var cornerRadius = (cornerId === "TL" ? 'rTL' : cornerId === "TR" ? 'rTR' : cornerId === "BR" ? 'rBR' : 'rBL');
             return [
                 'var ctrl = thisComp.layer("Master Controller");',
-                'var W = Math.max(1, ctrl.effect("Width")("Slider").value);',
-                'var H = Math.max(1, ctrl.effect("Height")("Slider").value);',
+                'var isExt = true;',
+                'try { isExt = ctrl.effect("Extruded")(1).value > 0; } catch(e) {}',
+                'var W = 600, H = 300;',
+                'try { W = Math.max(1, ctrl.effect("Width")(1).value); } catch(e) {}',
+                'try { H = Math.max(1, ctrl.effect("Height")(1).value); } catch(e) {}',
                 getRadiiSnippet(),
-                'var R = ' + (corner === 'TL' ? 'rTL' : corner === 'TR' ? 'rTR' : corner === 'BR' ? 'rBR' : 'rBL') + ';',
-                'var d = ctrl.effect("Extrusion Depth")("Slider").value;',
-                'var cx = ' + (corner === 'TL' ? '-W/2 + R' : corner === 'TR' ? 'W/2 - R' : corner === 'BR' ? 'W/2 - R' : '-W/2 + R') + ';',
-                'var cy = ' + (corner === 'TL' ? '-H/2 + R' : corner === 'TR' ? '-H/2 + R' : corner === 'BR' ? 'H/2 - R' : 'H/2 - R') + ';',
-                'var rChord = R * ' + rChordFactor.toFixed(8) + ';',
-                'var x = cx + rChord * (' + sinTheta.toFixed(8) + ');',
-                'var y = cy - rChord * (' + cosTheta.toFixed(8) + ');',
-                '[x, y, d / 2];'
+                'var isRound = ' + cornerRoundCheck + ';',
+                'var R = ' + cornerRadius + ';',
+                'if (!isExt || !isRound || R < 0.1) {',
+                '    0;',
+                '} else {',
+                getOcclusionSnippet('[0, 0, 1]'),
+                '    isVisible ? 100 : 0;',
+                '}'
             ].join('\n');
         },
 
-        cornerSegmentOpacity: function (corner) {
-            return [
-                'var ctrl = thisComp.layer("Master Controller");',
-                'var isExt = ctrl.effect("Extruded")("Checkbox").value > 0;',
-                'var W = Math.max(1, ctrl.effect("Width")("Slider").value);',
-                'var H = Math.max(1, ctrl.effect("Height")("Slider").value);',
-                getRadiiSnippet(),
-                'var R = ' + (corner === 'TL' ? 'rTL' : corner === 'TR' ? 'rTR' : corner === 'BR' ? 'rBR' : 'rBL') + ';',
-                '(isExt && R > 0.1) ? 100 : 0;'
-            ].join('\n');
-        },
-
+        /**
+         * Segmented Corner Arc Strip: Color Expression with subtle cylindrical shading.
+         */
         cornerSegmentColor: function (thetaRad) {
             return [
                 'var ctrl = thisComp.layer("Master Controller");',
-                'var baseCol = ctrl.effect("Edge Color")("Color").value;',
-                'var shd = ctrl.effect("Shading Intensity")("Slider").value / 100;',
-                'var lightFactor = 1 - Math.cos(' + thetaRad.toFixed(8) + ') * shd * 0.5;',
-                'lightFactor = Math.max(0.2, Math.min(1.4, lightFactor));',
-                '[baseCol[0] * lightFactor, baseCol[1] * lightFactor, baseCol[2] * lightFactor, baseCol[3]];'
-            ].join('\n');
-        },
-
-        // Screen Position in 3D scene (Placed snug on Cap without 3D track-matte conflicts)
-        screen3DPos: function (isBack) {
-            return [
-                'var ctrl = thisComp.layer("Master Controller");',
-                'var off = ctrl.effect("Cap Z-Offset (px)")("Slider").value;',
-                'var d = ctrl.effect("Extrusion Depth")("Slider").value;',
-                (isBack
-                    ? '[0, 0, d + (d >= 0 ? off + 0.15 : -off - 0.15)];'
-                    : '[0, 0, (d >= 0 ? -off - 0.15 : off + 0.15)];')
-            ].join('\n');
-        },
-
-        // Cross-Comp Cap Path (for 2D Matte inside Screen Wrapper - works in Classic 3D & Advanced 3D)
-        capPathCrossComp: function (targetCompName) {
-            return [
-                'var ctrl = null;',
-                'try { ctrl = comp("' + targetCompName + '").layer("Master Controller"); } catch(e) {}',
-                'if (!ctrl) {',
-                '  var cList = ["' + targetCompName + '", "Extruded_Round_Corners_1", "Extruded_Round_Corners_2", "Comp 1"];',
-                '  for (var i = 0; i < cList.length; i++) {',
-                '    try { ctrl = comp(cList[i]).layer("Master Controller"); if (ctrl) break; } catch(err) {}',
-                '  }',
-                '}',
-                'if (!ctrl) ctrl = thisLayer;',
-                '',
-                'var W = 600, H = 400;',
-                'try {',
-                '  W = Math.max(1, ctrl.effect("Width")("Slider").value);',
-                '  H = Math.max(1, ctrl.effect("Height")("Slider").value);',
-                '} catch(e) {}',
-                '',
-                getRadiiSnippet(),
-                '',
-                'var k = 0.5522847498;',
-                'var kTL = rTL * k, kTR = rTR * k, kBR = rBR * k, kBL = rBL * k;',
-                '',
-                'var pts = [',
-                '  [-W/2 + rTL, -H/2],',
-                '  [W/2 - rTR, -H/2],',
-                '  [W/2, -H/2 + rTR],',
-                '  [W/2, H/2 - rBR],',
-                '  [W/2 - rBR, H/2],',
-                '  [-W/2 + rBL, H/2],',
-                '  [-W/2, H/2 - rBL],',
-                '  [-W/2, -H/2 + rTL]',
-                '];',
-                'var inT = [',
-                '  [-kTL, 0], [0, 0], [0, -kTR], [0, 0], [kBR, 0], [0, 0], [0, kBL], [0, 0]',
-                '];',
-                'var outT = [',
-                '  [0, 0], [kTR, 0], [0, 0], [0, kBR], [0, 0], [-kBL, 0], [0, 0], [0, -kTL]',
-                '];',
-                'createPath(pts, inT, outT, true);'
-            ].join('\n');
-        },
-
-        // Screen Position inside 2D Wrapper
-        screenPosInside: function (targetCompName, isBack) {
-            var prefix = isBack ? "Back" : "Front";
-            return [
-                'var ctrl = null;',
-                'try { ctrl = comp("' + targetCompName + '").layer("Master Controller"); } catch(e) {}',
-                'if (!ctrl) {',
-                '  var cList = ["' + targetCompName + '", "Extruded_Round_Corners_1", "Extruded_Round_Corners_2", "Comp 1"];',
-                '  for (var i = 0; i < cList.length; i++) {',
-                '    try { ctrl = comp(cList[i]).layer("Master Controller"); if (ctrl) break; } catch(err) {}',
-                '  }',
-                '}',
-                '',
-                'var W = 600, H = 400, align = 0, off = [0, 0];',
-                'if (ctrl) {',
-                '  W = ctrl.effect("Width")("Slider").value;',
-                '  H = ctrl.effect("Height")("Slider").value;',
-                '  align = Math.round(ctrl.effect("' + prefix + ' Screen Alignment")("Slider").value);',
-                '  off = ctrl.effect("' + prefix + ' Screen Offset")("Point").value;',
-                '}',
-                '',
-                'var ax = 0, ay = 0;',
-                'switch (align) {',
-                '  case 1: ax = -W/2; ay = -H/2; break;',
-                '  case 2: ax = 0;    ay = -H/2; break;',
-                '  case 3: ax = W/2;  ay = -H/2; break;',
-                '  case 4: ax = -W/2; ay = 0;    break;',
-                '  case 5: ax = W/2;  ay = 0;    break;',
-                '  case 6: ax = -W/2; ay = H/2;  break;',
-                '  case 7: ax = 0;    ay = H/2;  break;',
-                '  case 8: ax = W/2;  ay = H/2;  break;',
-                '  default: ax = 0;   ay = 0;    break;',
-                '}',
-                '[thisComp.width / 2 + ax + off[0], thisComp.height / 2 + ay + off[1]];'
-            ].join('\n');
-        },
-
-        // Screen Scale inside 2D Wrapper
-        screenScaleInside: function (targetCompName, isBack) {
-            var prefix = isBack ? "Back" : "Front";
-            return [
-                'var ctrl = null;',
-                'try { ctrl = comp("' + targetCompName + '").layer("Master Controller"); } catch(e) {}',
-                'if (!ctrl) {',
-                '  var cList = ["' + targetCompName + '", "Extruded_Round_Corners_1", "Extruded_Round_Corners_2", "Comp 1"];',
-                '  for (var i = 0; i < cList.length; i++) {',
-                '    try { ctrl = comp(cList[i]).layer("Master Controller"); if (ctrl) break; } catch(err) {}',
-                '  }',
-                '}',
-                'var W = 600, H = 400, mode = 1, man = 1;',
-                'if (ctrl) {',
-                '  W = Math.max(1, ctrl.effect("Width")("Slider").value);',
-                '  H = Math.max(1, ctrl.effect("Height")("Slider").value);',
-                '  mode = Math.round(ctrl.effect("' + prefix + ' Screen Scale Mode")("Slider").value);',
-                '  man = ctrl.effect("' + prefix + ' Screen Scale")("Slider").value / 100;',
-                '}',
-                'var sw = sourceRectAtTime().width;',
-                'var sh = sourceRectAtTime().height;',
-                'if (sw <= 0) sw = 1920; if (sh <= 0) sh = 1080;',
-                'var sx = 100, sy = 100;',
-                'if (mode === 1) {',
-                '  var fit = Math.min(W / sw, H / sh) * 100 * man;',
-                '  sx = fit; sy = fit;',
-                '} else if (mode === 2) {',
-                '  var fill = Math.max(W / sw, H / sh) * 100 * man;',
-                '  sx = fill; sy = fill;',
-                '} else if (mode === 3) {',
-                '  sx = (W / sw) * 100 * man;',
-                '  sy = (H / sh) * 100 * man;',
-                '} else {',
-                '  sx = 100 * man; sy = 100 * man;',
-                '}',
-                '[sx, sy];'
-            ].join('\n');
-        },
-
-        // Screen Anchor inside 2D Wrapper
-        screenAnchorInside: function (targetCompName, isBack) {
-            var prefix = isBack ? "Back" : "Front";
-            return [
-                'var ctrl = null;',
-                'try { ctrl = comp("' + targetCompName + '").layer("Master Controller"); } catch(e) {}',
-                'var align = 0;',
-                'if (ctrl) {',
-                '  align = Math.round(ctrl.effect("' + prefix + ' Screen Alignment")("Slider").value);',
-                '}',
-                'var sr = sourceRectAtTime();',
-                'var l = sr.left, t = sr.top, w = sr.width, h = sr.height;',
-                'var ax = l + w / 2, ay = t + h / 2;',
-                'switch (align) {',
-                '  case 1: ax = l;         ay = t;         break;',
-                '  case 2: ax = l + w / 2; ay = t;         break;',
-                '  case 3: ax = l + w;     ay = t;         break;',
-                '  case 4: ax = l;         ay = t + h / 2; break;',
-                '  case 5: ax = l + w;     ay = t + h / 2; break;',
-                '  case 6: ax = l;         ay = t + h;     break;',
-                '  case 7: ax = l + w / 2; ay = t + h;     break;',
-                '  case 8: ax = l + w;     ay = t + h;     break;',
-                '  default: ax = l + w / 2; ay = t + h / 2; break;',
-                '}',
-                '[ax, ay];'
-            ].join('\n');
-        },
-
-        screenOpacity: function (isBack) {
-            var prefix = isBack ? "Back" : "Front";
-            return [
-                'var ctrl = thisComp.layer("Master Controller");',
-                'var en = ctrl.effect("' + prefix + ' Screen Enabled")("Checkbox").value > 0;',
-                'en ? ctrl.effect("' + prefix + ' Screen Opacity")("Slider").value : 0;'
+                'var baseCol = [0.12, 0.53, 0.90, 1];',
+                'try { baseCol = ctrl.effect("Edge Color")(1).value; } catch(e) {}',
+                'var shd = 0.15;',
+                'try { shd = ctrl.effect("Shading Intensity")(1).value / 100; } catch(e) {}',
+                'var light = 1 - Math.cos(' + thetaRad.toFixed(8) + ') * shd * 0.5;',
+                'light = Math.max(0.15, Math.min(1.4, light));',
+                '[baseCol[0] * light, baseCol[1] * light, baseCol[2] * light, baseCol[3]];'
             ].join('\n');
         }
     };
 
-    // Rig Builder Function
+
+    // ========================================================================
+    // RIG BUILDER ENGINE
+    // ========================================================================
+
+    /**
+     * Constructs the complete 2D / 3D Extruded Round Corners rig inside Adobe After Effects.
+     * @param {Object} params - User configuration parameter map.
+     */
     function buildExtrusionRig(params) {
         var comp = app.project.activeItem;
         if (!comp || !(comp instanceof CompItem)) {
-            alert("Please select or open an active composition first.", SCRIPT_NAME);
+            alert("Please open or select an active composition first.", SCRIPT_NAME);
             return null;
         }
 
-        app.beginUndoGroup("Create Extruded Round Corners");
+        app.beginUndoGroup("Build Extruded Round Corners v2.0.0");
 
         try {
             var targetComp = comp;
             var masterCompLayer = null;
 
-            // If user wants a dedicated 3D precomp
+            // Target precomp container option for pristine project cleanliness
             if (params.targetMode === "precomp") {
                 var precompName = "Extruded_Round_Corners_" + (app.project.numItems + 1);
                 var precomp = app.project.items.addComp(
@@ -478,302 +555,225 @@
                 targetComp = precomp;
             }
 
-            // 1. Create Master Controller 3D Null
+            // ----------------------------------------------------------------
+            // 1. MASTER CONTROLLER (3D NULL WITH ALL TIMELINE CONTROLS)
+            // ----------------------------------------------------------------
             var ctrl = targetComp.layers.addNull();
             ctrl.name = "Master Controller";
             ctrl.threeDLayer = true;
             ctrl.position.setValue([targetComp.width / 2, targetComp.height / 2, 0]);
 
-            // Add Custom Controls to Master Controller
-            // Geometry Group
-            var fxExtruded = ctrl.property("ADBE Effect Parade").addProperty("ADBE Checkbox Control");
+            var fx = ctrl.property("ADBE Effect Parade");
+
+            // Master Extruded Toggle
+            var fxExtruded = fx.addProperty("ADBE Checkbox Control");
             fxExtruded.name = "Extruded";
             fxExtruded.property(1).setValue(params.isExtruded ? 1 : 0);
 
-            var fxWidth = ctrl.property("ADBE Effect Parade").addProperty("ADBE Slider Control");
+            // 2D Dimensions
+            var fxWidth = fx.addProperty("ADBE Slider Control");
             fxWidth.name = "Width";
             fxWidth.property(1).setValue(params.width);
 
-            var fxHeight = ctrl.property("ADBE Effect Parade").addProperty("ADBE Slider Control");
+            var fxHeight = fx.addProperty("ADBE Slider Control");
             fxHeight.name = "Height";
             fxHeight.property(1).setValue(params.height);
 
-            // Link All 4 Corners boolean: when active, all 4 corners use values from Top-Left
-            var fxLink = ctrl.property("ADBE Effect Parade").addProperty("ADBE Checkbox Control");
-            fxLink.name = "Link All 4 Corners";
-            fxLink.property(1).setValue(params.linkRadii ? 1 : 0);
+            // Master & Link Corner Switches
+            var fxRoundCorners = fx.addProperty("ADBE Checkbox Control");
+            fxRoundCorners.name = "Round Corners";
+            fxRoundCorners.property(1).setValue(params.roundCornersMaster ? 1 : 0);
 
-            var fxRadTL = ctrl.property("ADBE Effect Parade").addProperty("ADBE Slider Control");
+            var fxLink = fx.addProperty("ADBE Checkbox Control");
+            fxLink.name = "Link All Corners";
+            fxLink.property(1).setValue(params.linkCorners ? 1 : 0);
+
+            // Per-Corner Checkboxes & Radii Sliders (100% Animatable in AE Timeline)
+            var fxRoundTL = fx.addProperty("ADBE Checkbox Control");
+            fxRoundTL.name = "Round Top-Left";
+            fxRoundTL.property(1).setValue(params.roundTL ? 1 : 0);
+
+            var fxRadTL = fx.addProperty("ADBE Slider Control");
             fxRadTL.name = "Radius Top-Left";
             fxRadTL.property(1).setValue(params.radiusTL);
 
-            var fxRadTR = ctrl.property("ADBE Effect Parade").addProperty("ADBE Slider Control");
+            var fxRoundTR = fx.addProperty("ADBE Checkbox Control");
+            fxRoundTR.name = "Round Top-Right";
+            fxRoundTR.property(1).setValue(params.roundTR ? 1 : 0);
+
+            var fxRadTR = fx.addProperty("ADBE Slider Control");
             fxRadTR.name = "Radius Top-Right";
             fxRadTR.property(1).setValue(params.radiusTR);
 
-            var fxRadBR = ctrl.property("ADBE Effect Parade").addProperty("ADBE Slider Control");
+            var fxRoundBR = fx.addProperty("ADBE Checkbox Control");
+            fxRoundBR.name = "Round Bottom-Right";
+            fxRoundBR.property(1).setValue(params.roundBR ? 1 : 0);
+
+            var fxRadBR = fx.addProperty("ADBE Slider Control");
             fxRadBR.name = "Radius Bottom-Right";
             fxRadBR.property(1).setValue(params.radiusBR);
 
-            var fxRadBL = ctrl.property("ADBE Effect Parade").addProperty("ADBE Slider Control");
+            var fxRoundBL = fx.addProperty("ADBE Checkbox Control");
+            fxRoundBL.name = "Round Bottom-Left";
+            fxRoundBL.property(1).setValue(params.roundBL ? 1 : 0);
+
+            var fxRadBL = fx.addProperty("ADBE Slider Control");
             fxRadBL.name = "Radius Bottom-Left";
             fxRadBL.property(1).setValue(params.radiusBL);
 
-            // Extrusion Group
-            var fxDepth = ctrl.property("ADBE Effect Parade").addProperty("ADBE Slider Control");
+            // Extrusion Depth (Supports Negative Values)
+            var fxDepth = fx.addProperty("ADBE Slider Control");
             fxDepth.name = "Extrusion Depth";
             fxDepth.property(1).setValue(params.depth);
 
-            var fxSeam = ctrl.property("ADBE Effect Parade").addProperty("ADBE Slider Control");
-            fxSeam.name = "Seam Overlap (px)";
-            fxSeam.property(1).setValue(params.seamOverlap);
+            // Color Controls
+            var fxColFront = fx.addProperty("ADBE Color Control");
+            fxColFront.name = "Front Cap Color";
+            fxColFront.property(1).setValue(params.capFrontColor);
 
-            var fxCapOff = ctrl.property("ADBE Effect Parade").addProperty("ADBE Slider Control");
-            fxCapOff.name = "Cap Z-Offset (px)";
-            fxCapOff.property(1).setValue(params.capOffset);
+            var fxColBack = fx.addProperty("ADBE Color Control");
+            fxColBack.name = "Back Cap Color";
+            fxColBack.property(1).setValue(params.capBackColor);
 
-            // Colors Group
-            var fxCapTopCol = ctrl.property("ADBE Effect Parade").addProperty("ADBE Color Control");
-            fxCapTopCol.name = "Cap Top Color";
-            fxCapTopCol.property(1).setValue(params.capTopColor);
+            var fxColEdge = fx.addProperty("ADBE Color Control");
+            fxColEdge.name = "Edge Color";
+            fxColEdge.property(1).setValue(params.edgeColor);
 
-            var fxCapBotCol = ctrl.property("ADBE Effect Parade").addProperty("ADBE Color Control");
-            fxCapBotCol.name = "Cap Bottom Color";
-            fxCapBotCol.property(1).setValue(params.capBotColor);
+            var fxPaintInner = fx.addProperty("ADBE Checkbox Control");
+            fxPaintInner.name = "Paint Inner Sides Using Edge Color";
+            fxPaintInner.property(1).setValue(params.paintInnerSides ? 1 : 0);
 
-            var fxEdgeCol = ctrl.property("ADBE Effect Parade").addProperty("ADBE Color Control");
-            fxEdgeCol.name = "Edge Color";
-            fxEdgeCol.property(1).setValue(params.edgeColor);
+            // Fine Tuning & Tolerances
+            var fxGapTol = fx.addProperty("ADBE Slider Control");
+            fxGapTol.name = "Gap Tolerance (px)";
+            fxGapTol.property(1).setValue(params.gapTolerance);
 
-            var fxShading = ctrl.property("ADBE Effect Parade").addProperty("ADBE Slider Control");
+            var fxEdgeSidesDist = fx.addProperty("ADBE Slider Control");
+            fxEdgeSidesDist.name = "Edge to Sides Distance (px)";
+            fxEdgeSidesDist.property(1).setValue(params.edgeSidesDistance);
+
+            var fxInnerOuterDist = fx.addProperty("ADBE Slider Control");
+            fxInnerOuterDist.name = "Inner vs Outer Distance (px)";
+            fxInnerOuterDist.property(1).setValue(params.innerOuterDistance);
+
+            var fxShading = fx.addProperty("ADBE Slider Control");
             fxShading.name = "Shading Intensity";
             fxShading.property(1).setValue(params.shading);
 
-            // Screen Controls Group
-            var fxFScreenEn = ctrl.property("ADBE Effect Parade").addProperty("ADBE Checkbox Control");
-            fxFScreenEn.name = "Front Screen Enabled";
-            fxFScreenEn.property(1).setValue((params.screenMode === "top" || params.screenMode === "both" || params.screenMode === "both_sep") ? 1 : 0);
+            var fxOcclusion = fx.addProperty("ADBE Checkbox Control");
+            fxOcclusion.name = "Occlusion Culling";
+            fxOcclusion.property(1).setValue(params.occlusionCulling ? 1 : 0);
 
-            var fxFScreenAlign = ctrl.property("ADBE Effect Parade").addProperty("ADBE Slider Control");
-            fxFScreenAlign.name = "Front Screen Alignment";
-            fxFScreenAlign.property(1).setValue(params.screenAlign);
 
-            var fxFScreenOff = ctrl.property("ADBE Effect Parade").addProperty("ADBE Point Control");
-            fxFScreenOff.name = "Front Screen Offset";
-            fxFScreenOff.property(1).setValue([params.screenOffsetX, params.screenOffsetY]);
+            // ----------------------------------------------------------------
+            // 2. FRONT & BACK CAPS (OUTER & INNER FACES)
+            // ----------------------------------------------------------------
+            function createCapLayer(name, isBack, isInner) {
+                var cap = targetComp.layers.addShape();
+                cap.name = name;
+                cap.threeDLayer = true;
+                cap.parent = ctrl;
+                cap.shy = isInner ? params.shySecondary : false;
 
-            var fxFScreenScaleM = ctrl.property("ADBE Effect Parade").addProperty("ADBE Slider Control");
-            fxFScreenScaleM.name = "Front Screen Scale Mode";
-            fxFScreenScaleM.property(1).setValue(params.screenScaleMode);
+                // Position expression tracking extrusion depth & anti-clipping offsets
+                cap.property("ADBE Transform Group").property("ADBE Position").expression =
+                    EXPRESSIONS.capPosition(isBack, isInner);
 
-            var fxFScreenScale = ctrl.property("ADBE Effect Parade").addProperty("ADBE Slider Control");
-            fxFScreenScale.name = "Front Screen Scale";
-            fxFScreenScale.property(1).setValue(params.screenScale);
+                // Opacity expression with real-time occlusion culling
+                cap.property("ADBE Transform Group").property("ADBE Opacity").expression =
+                    EXPRESSIONS.capOpacity(isBack);
 
-            var fxFScreenOp = ctrl.property("ADBE Effect Parade").addProperty("ADBE Slider Control");
-            fxFScreenOp.name = "Front Screen Opacity";
-            fxFScreenOp.property(1).setValue(100);
+                var contents = cap.property("ADBE Root Vectors Group");
+                var group = contents.addProperty("ADBE Vector Group");
+                group.name = "Cap Vectors";
+                var gVecs = group.property("ADBE Vectors Group");
 
-            // Back Screen Controls Group
-            var fxBScreenEn = ctrl.property("ADBE Effect Parade").addProperty("ADBE Checkbox Control");
-            fxBScreenEn.name = "Back Screen Enabled";
-            fxBScreenEn.property(1).setValue((params.screenMode === "bottom" || params.screenMode === "both" || params.screenMode === "both_sep") ? 1 : 0);
+                var shapePath = gVecs.addProperty("ADBE Vector Shape - Group");
+                shapePath.name = "Custom Rounded Path";
+                shapePath.property("ADBE Vector Shape").expression = EXPRESSIONS.capPath;
 
-            var fxBScreenAlign = ctrl.property("ADBE Effect Parade").addProperty("ADBE Slider Control");
-            fxBScreenAlign.name = "Back Screen Alignment";
-            fxBScreenAlign.property(1).setValue(params.screenAlign);
+                var fill = gVecs.addProperty("ADBE Vector Graphic - Fill");
+                fill.name = "Cap Fill";
 
-            var fxBScreenOff = ctrl.property("ADBE Effect Parade").addProperty("ADBE Point Control");
-            fxBScreenOff.name = "Back Screen Offset";
-            fxBScreenOff.property(1).setValue([params.screenOffsetX, params.screenOffsetY]);
-
-            var fxBScreenScaleM = ctrl.property("ADBE Effect Parade").addProperty("ADBE Slider Control");
-            fxBScreenScaleM.name = "Back Screen Scale Mode";
-            fxBScreenScaleM.property(1).setValue(params.screenScaleMode);
-
-            var fxBScreenScale = ctrl.property("ADBE Effect Parade").addProperty("ADBE Slider Control");
-            fxBScreenScale.name = "Back Screen Scale";
-            fxBScreenScale.property(1).setValue(params.screenScale);
-
-            var fxBScreenOp = ctrl.property("ADBE Effect Parade").addProperty("ADBE Slider Control");
-            fxBScreenOp.name = "Back Screen Opacity";
-            fxBScreenOp.property(1).setValue(100);
-
-            // 2. Helper to build Cap Shape Layers (Outer & Inner)
-            function createCapShapeLayer(name, isTop, isInner) {
-                var shapeLayer = targetComp.layers.addShape();
-                shapeLayer.name = name;
-                shapeLayer.threeDLayer = true;
-                shapeLayer.parent = ctrl;
-                shapeLayer.shy = isInner ? params.shySecondary : false;
-
-                // Position expression
-                if (isTop) {
-                    shapeLayer.property("ADBE Transform Group").property("ADBE Position").expression =
-                        isInner
-                            ? 'var ctrl = thisComp.layer("Master Controller"); var off = ctrl.effect("Cap Z-Offset (px)")("Slider").value; var d = ctrl.effect("Extrusion Depth")("Slider").value; [0, 0, (d >= 0 ? -off + 0.08 : off - 0.08)];'
-                            : EXPRESSIONS.capTopPos;
+                if (isInner) {
+                    fill.property("ADBE Vector Fill Color").expression = [
+                        'var ctrl = thisComp.layer("Master Controller");',
+                        'var useEdge = true;',
+                        'try { useEdge = ctrl.effect("Paint Inner Sides Using Edge Color")(1).value > 0; } catch(e) {}',
+                        'useEdge ? ctrl.effect("Edge Color")(1).value : ctrl.effect("' + (isBack ? "Back Cap Color" : "Front Cap Color") + '")(1).value;'
+                    ].join('\n');
                 } else {
-                    shapeLayer.property("ADBE Transform Group").property("ADBE Position").expression =
-                        isInner
-                            ? 'var ctrl = thisComp.layer("Master Controller"); var off = ctrl.effect("Cap Z-Offset (px)")("Slider").value; var d = ctrl.effect("Extrusion Depth")("Slider").value; [0, 0, d + (d >= 0 ? off - 0.08 : -off + 0.08)];'
-                            : EXPRESSIONS.capBottomPos;
+                    fill.property("ADBE Vector Fill Color").expression =
+                        'thisComp.layer("Master Controller").effect("' + (isBack ? "Back Cap Color" : "Front Cap Color") + '")(1).value;';
                 }
 
-                if (!isTop || isInner) {
-                    shapeLayer.property("ADBE Transform Group").property("ADBE Opacity").expression =
-                        EXPRESSIONS.capBottomOpacity; // Active only when Extruded is ON
-                }
-
-                var contents = shapeLayer.property("ADBE Root Vectors Group");
-                var shapeGroup = contents.addProperty("ADBE Vector Group");
-                shapeGroup.name = "Cap Shape";
-                var groupVectors = shapeGroup.property("ADBE Vectors Group");
-
-                var pathProp = groupVectors.addProperty("ADBE Vector Shape - Group");
-                pathProp.name = "Rounded Rect Path";
-                pathProp.property("ADBE Vector Shape").expression = EXPRESSIONS.capPath;
-
-                var fillProp = groupVectors.addProperty("ADBE Vector Graphic - Fill");
-                fillProp.name = "Cap Fill";
-                fillProp.property("ADBE Vector Fill Color").expression =
-                    isInner
-                        ? 'thisComp.layer("Master Controller").effect("Edge Color")("Color");'
-                        : 'thisComp.layer("Master Controller").effect("' + (isTop ? "Cap Top Color" : "Cap Bottom Color") + '")("Color");';
-
-                return shapeLayer;
+                return cap;
             }
 
-            var capTop = createCapShapeLayer("Cap Top", true, false);
-            var capTopInner = createCapShapeLayer("Cap Top Inner", true, true);
-            var capBot = createCapShapeLayer("Cap Bottom", false, false);
-            var capBotInner = createCapShapeLayer("Cap Bottom Inner", false, true);
+            // Create inner caps first, then outer caps so outer caps naturally render on top
+            var capFrontInner = createCapLayer("Cap Front Inner", false, true);
+            var capFront      = createCapLayer("Cap Front", false, false);
+            var capBackInner  = createCapLayer("Cap Back Inner", true, true);
+            var capBack       = createCapLayer("Cap Back", true, false);
 
-            // 3. Helper to create Screen Layer with Self-Contained 2D Pre-comp Matte
-            // (Works flawlessly in Classic 3D, Advanced 3D, and Cinema 4D without 3D track-matte conflicts)
-            function createScreenRig(isBack, sourceComp) {
-                var prefix = isBack ? "Back" : "Front";
-                var wrapW = Math.max(3840, targetComp.width * 2);
-                var wrapH = Math.max(2160, targetComp.height * 2);
 
-                // Create 2D Mounted Wrapper Comp
-                var wrapperComp = app.project.items.addComp(
-                    "[" + prefix + " Screen Mounted]",
-                    wrapW,
-                    wrapH,
-                    1.0,
-                    targetComp.duration,
-                    targetComp.frameRate
-                );
+            // ----------------------------------------------------------------
+            // 3. DEBUG LABELS ("front" & "back")
+            // ----------------------------------------------------------------
+            if (params.showDebugLabels) {
+                // Front Debug Text
+                var frontText = targetComp.layers.addText("front");
+                frontText.name = "DEBUG: front";
+                frontText.threeDLayer = true;
+                frontText.parent = ctrl;
+                frontText.shy = params.shySecondary;
 
-                // 1. Matte Shape Layer (2D) inside wrapper
-                var matte = wrapperComp.layers.addShape();
-                matte.name = prefix + " Screen Matte (2D)";
-                matte.position.setValue([wrapW / 2, wrapH / 2]);
+                var fTextProp = frontText.property("ADBE Text Properties").property("ADBE Text Document");
+                var fTextDoc = fTextProp.value;
+                fTextDoc.fontSize = 48;
+                fTextDoc.fillColor = [1, 1, 1];
+                fTextDoc.justification = ParagraphJustification.CENTER_JUSTIFY;
+                fTextProp.setValue(fTextDoc);
 
-                var matteContents = matte.property("ADBE Root Vectors Group");
-                var matteGroup = matteContents.addProperty("ADBE Vector Group");
-                var matteGroupVectors = matteGroup.property("ADBE Vectors Group");
-                var mattePath = matteGroupVectors.addProperty("ADBE Vector Shape - Group");
-                mattePath.property("ADBE Vector Shape").expression = EXPRESSIONS.capPathCrossComp(targetComp.name);
-                var matteFill = matteGroupVectors.addProperty("ADBE Vector Graphic - Fill");
-                matteFill.property("ADBE Vector Fill Color").setValue([1, 1, 1, 1]);
+                frontText.property("ADBE Transform Group").property("ADBE Position").expression = [
+                    'var ctrl = thisComp.layer("Master Controller");',
+                    'var edgeSidesDist = 0.2;',
+                    'try { edgeSidesDist = ctrl.effect("Edge to Sides Distance (px)")(1).value; } catch(e) {}',
+                    'var d = 60;',
+                    'try { d = ctrl.effect("Extrusion Depth")(1).value; } catch(e) {}',
+                    '[0, 16, (d >= 0 ? -edgeSidesDist - 0.5 : edgeSidesDist + 0.5)];'
+                ].join('\n');
 
-                // 2. User Content Comp Layer (2D) inside wrapper
-                var contentLayer = wrapperComp.layers.add(sourceComp);
-                contentLayer.name = "Content";
-                contentLayer.property("ADBE Transform Group").property("ADBE Anchor Point").expression =
-                    EXPRESSIONS.screenAnchorInside(targetComp.name, isBack);
-                contentLayer.property("ADBE Transform Group").property("ADBE Position").expression =
-                    EXPRESSIONS.screenPosInside(targetComp.name, isBack);
-                contentLayer.property("ADBE Transform Group").property("ADBE Scale").expression =
-                    EXPRESSIONS.screenScaleInside(targetComp.name, isBack);
+                // Back Debug Text (Rotated 180° around Y to read correctly from back)
+                var backText = targetComp.layers.addText("back");
+                backText.name = "DEBUG: back";
+                backText.threeDLayer = true;
+                backText.parent = ctrl;
+                backText.shy = params.shySecondary;
 
-                // Set 2D Track Matte inside the wrapper
-                try {
-                    if (contentLayer.setTrackMatte) {
-                        contentLayer.setTrackMatte(matte, TrackMatteType.ALPHA);
-                    } else {
-                        matte.moveBefore(contentLayer);
-                        contentLayer.trackMatteType = TrackMatteType.ALPHA;
-                    }
-                } catch (e) {
-                    try {
-                        matte.moveBefore(contentLayer);
-                        contentLayer.trackMatteType = TrackMatteType.ALPHA;
-                    } catch (err) {}
-                }
+                var bTextProp = backText.property("ADBE Text Properties").property("ADBE Text Document");
+                var bTextDoc = bTextProp.value;
+                bTextDoc.fontSize = 48;
+                bTextDoc.fillColor = [1, 1, 1];
+                bTextDoc.justification = ParagraphJustification.CENTER_JUSTIFY;
+                bTextProp.setValue(bTextDoc);
 
-                // 3. Add the wrapper as a single 3D layer into the 3D scene (targetComp)
-                var screenLayer = targetComp.layers.add(wrapperComp);
-                screenLayer.name = prefix + " Screen [Screen Content]";
-                screenLayer.threeDLayer = true;
-                screenLayer.parent = ctrl;
-                screenLayer.shy = false;
-
-                screenLayer.property("ADBE Transform Group").property("ADBE Position").expression =
-                    EXPRESSIONS.screen3DPos(isBack);
-
-                if (isBack) {
-                    screenLayer.property("ADBE Transform Group").property("ADBE Rotate Y").setValue(180);
-                }
-
-                screenLayer.property("ADBE Transform Group").property("ADBE Opacity").expression =
-                    EXPRESSIONS.screenOpacity(isBack);
-
-                return screenLayer;
+                backText.property("ADBE Transform Group").property("ADBE Rotate Y").setValue(180);
+                backText.property("ADBE Transform Group").property("ADBE Position").expression = [
+                    'var ctrl = thisComp.layer("Master Controller");',
+                    'var edgeSidesDist = 0.2;',
+                    'try { edgeSidesDist = ctrl.effect("Edge to Sides Distance (px)")(1).value; } catch(e) {}',
+                    'var d = 60;',
+                    'try { d = ctrl.effect("Extrusion Depth")(1).value; } catch(e) {}',
+                    '[0, 16, d + (d >= 0 ? edgeSidesDist + 0.5 : -edgeSidesDist - 0.5)];'
+                ].join('\n');
             }
 
-            // Create Screen Precomps if requested
-            if (params.screenMode !== "none") {
-                var screenFrontComp = null;
-                var screenBackComp = null;
 
-                function createPlaceholderComp(title) {
-                    var sComp = app.project.items.addComp(
-                        title,
-                        1920,
-                        1080,
-                        1.0,
-                        comp.duration,
-                        comp.frameRate
-                    );
-                    var bg = sComp.layers.addSolid([0.1, 0.12, 0.15], "Background", 1920, 1080, 1.0);
-                    var centerNull = sComp.layers.addNull();
-                    centerNull.position.setValue([960, 540]);
-
-                    var sampleText = sComp.layers.addText("REPLACE WITH YOUR CONTENT");
-                    var textProp = sampleText.property("ADBE Text Properties").property("ADBE Text Document");
-                    var textDoc = textProp.value;
-                    textDoc.fontSize = 64;
-                    textDoc.fillColor = [1, 1, 1];
-                    textDoc.justification = ParagraphJustification.CENTER_JUSTIFY;
-                    textProp.setValue(textDoc);
-                    sampleText.position.setValue([960, 540]);
-
-                    return sComp;
-                }
-
-                if (params.screenMode === "top" || params.screenMode === "both") {
-                    screenFrontComp = createPlaceholderComp("[Screen] Front Cap Content");
-                    createScreenRig(false, screenFrontComp);
-                } else if (params.screenMode === "both_sep") {
-                    screenFrontComp = createPlaceholderComp("[Screen] Front Cap Content");
-                    createScreenRig(false, screenFrontComp);
-                    screenBackComp = createPlaceholderComp("[Screen] Back Cap Content");
-                    createScreenRig(true, screenBackComp);
-                }
-
-                if (params.screenMode === "bottom") {
-                    screenBackComp = createPlaceholderComp("[Screen] Back Cap Content");
-                    createScreenRig(true, screenBackComp);
-                } else if (params.screenMode === "both" && screenFrontComp) {
-                    createScreenRig(true, screenFrontComp);
-                }
-            }
-
-            // 4. Create Straight Wall Segments
-            function createStraightWall(name, sizeExp, posExp, rotX, rotY, rotZ) {
+            // ----------------------------------------------------------------
+            // 4. STRAIGHT EDGE WALLS (TOP, RIGHT, BOTTOM, LEFT)
+            // ----------------------------------------------------------------
+            function createStraightWall(name, edgeKey, rotX, rotY, rotZ) {
                 var wall = targetComp.layers.addShape();
                 wall.name = name;
                 wall.threeDLayer = true;
@@ -781,72 +781,115 @@
                 wall.shy = params.shySecondary;
 
                 var tr = wall.property("ADBE Transform Group");
-                tr.property("ADBE Position").expression = posExp;
+                tr.property("ADBE Position").expression = EXPRESSIONS.straightWallPos(edgeKey);
+                tr.property("ADBE Anchor Point").setValue([0, 0, 0]);
                 tr.property("ADBE Rotate X").setValue(rotX);
                 tr.property("ADBE Rotate Y").setValue(rotY);
                 tr.property("ADBE Rotate Z").setValue(rotZ);
-                tr.property("ADBE Opacity").expression = EXPRESSIONS.straightWallOpacity;
+                tr.property("ADBE Opacity").expression = EXPRESSIONS.straightWallOpacity();
 
                 var contents = wall.property("ADBE Root Vectors Group");
-                var grp = contents.addProperty("ADBE Vector Group");
-                var gVecs = grp.property("ADBE Vectors Group");
+                var group = contents.addProperty("ADBE Vector Group");
+                var gVecs = group.property("ADBE Vectors Group");
 
                 var rect = gVecs.addProperty("ADBE Vector Shape - Rect");
-                rect.property("ADBE Vector Rect Size").expression = sizeExp;
+                rect.name = "Wall Rect";
+                rect.property("ADBE Vector Rect Size").expression = EXPRESSIONS.straightWallSize(edgeKey);
 
                 var fill = gVecs.addProperty("ADBE Vector Graphic - Fill");
+                fill.name = "Wall Fill";
                 fill.property("ADBE Vector Fill Color").expression =
-                    'thisComp.layer("Master Controller").effect("Edge Color")("Color");';
+                    'thisComp.layer("Master Controller").effect("Edge Color")(1).value;';
 
                 return wall;
             }
 
-            createStraightWall("Wall Top", EXPRESSIONS.topWallSize, EXPRESSIONS.topWallPos, 90, 0, 0);
-            createStraightWall("Wall Right", EXPRESSIONS.rightWallSize, EXPRESSIONS.rightWallPos, 90, 0, 90);
-            createStraightWall("Wall Bottom", EXPRESSIONS.bottomWallSize, EXPRESSIONS.bottomWallPos, 90, 0, 180);
-            createStraightWall("Wall Left", EXPRESSIONS.leftWallSize, EXPRESSIONS.leftWallPos, 90, 0, 270);
+            // Unified 3D Wall Orientations (All 4 walls use Rotate X = 0 for rock-solid stability):
+            // Top wall: rotY = 90, rotZ = -90 (lies in XZ plane at Y = -H/2, normal UP)
+            // Bottom wall: rotY = 90, rotZ = 90 (lies in XZ plane at Y = H/2, normal DOWN)
+            // Right wall: rotY = 90, rotZ = 0 (lies in YZ plane at X = W/2, normal RIGHT)
+            // Left wall: rotY = -90, rotZ = 0 (lies in YZ plane at X = -W/2, normal LEFT)
+            createStraightWall("Wall Top",    "top",    0,  90, -90);
+            createStraightWall("Wall Bottom", "bottom", 0,  90,  90);
+            createStraightWall("Wall Right",  "right",  0,  90,   0);
+            createStraightWall("Wall Left",   "left",   0, -90,   0);
 
-            // 5. Create Corner Arc Segments (STRICTLY THE NEEDED COUNT)
-            var S = params.segments; // e.g. 6 to 24 strictly needed
-            var corners = ["TR", "BR", "BL", "TL"];
+
+            // ----------------------------------------------------------------
+            // 5. EXTRUDED CORNER ARCS (SEGMENTED SQUARE STRIPS VIA Z ANCHOR DISPLACEMENT)
+            // ----------------------------------------------------------------
+            // Strict user requirement:
+            // "To build the segmented archs/corners, set the center of the segments/squares
+            // in the center of the corner radius, but displace the squares using the Z anchor
+            // point distance, and rotation values. (dont use the orientation prooperties)"
+            var S = Math.max(6, Math.min(15, params.segments));
+            var corners = [
+                { id: "TR", name: "Top-Right",    startAngle: 0 },
+                { id: "BR", name: "Bottom-Right", startAngle: Math.PI / 2 },
+                { id: "BL", name: "Bottom-Left",  startAngle: Math.PI },
+                { id: "TL", name: "Top-Left",     startAngle: 3 * Math.PI / 2 }
+            ];
+
+            var delta = (Math.PI / 2) / S;
 
             for (var c = 0; c < corners.length; c++) {
-                var cName = corners[c];
-                var delta = (Math.PI / 2) / S;
-                var startAngle = (cName === "TR" ? 0 : cName === "BR" ? Math.PI / 2 : cName === "BL" ? Math.PI : 3 * Math.PI / 2);
+                var cornerInfo = corners[c];
+                var cId = cornerInfo.id;
 
                 for (var k = 0; k < S; k++) {
-                    var thetaRad = startAngle + (k + 0.5) * delta;
+                    var thetaRad = cornerInfo.startAngle + (k + 0.5) * delta;
                     var thetaDeg = thetaRad * 180 / Math.PI;
 
                     var segLayer = targetComp.layers.addShape();
-                    segLayer.name = "Arc " + cName + " [" + (k + 1) + "]";
+                    segLayer.name = "Arc " + cId + " [" + (k + 1) + "]";
                     segLayer.threeDLayer = true;
                     segLayer.parent = ctrl;
                     segLayer.shy = params.shySecondary;
 
-                    var tr = segLayer.property("ADBE Transform Group");
-                    tr.property("ADBE Position").expression = EXPRESSIONS.cornerSegmentPos(cName, k, S);
-                    tr.property("ADBE Rotate X").setValue(90);
-                    tr.property("ADBE Rotate Y").setValue(0);
-                    tr.property("ADBE Rotate Z").setValue(thetaDeg);
-                    tr.property("ADBE Opacity").expression = EXPRESSIONS.cornerSegmentOpacity(cName);
+                    var segTr = segLayer.property("ADBE Transform Group");
 
-                    var contents = segLayer.property("ADBE Root Vectors Group");
-                    var grp = contents.addProperty("ADBE Vector Group");
-                    var gVecs = grp.property("ADBE Vectors Group");
+                    // 1. Position expression sets center of square directly at corner radius center:
+                    segTr.property("ADBE Position").expression = EXPRESSIONS.cornerSegmentPos(cId);
 
-                    var rect = gVecs.addProperty("ADBE Vector Shape - Rect");
-                    rect.property("ADBE Vector Rect Size").expression = EXPRESSIONS.cornerSegmentSize(cName, S);
+                    // 2. Anchor point expression displaces square by negative chord distance in Z:
+                    segTr.property("ADBE Anchor Point").expression = EXPRESSIONS.cornerSegmentAnchor(cId, S);
 
-                    var fill = gVecs.addProperty("ADBE Vector Graphic - Fill");
-                    fill.property("ADBE Vector Fill Color").expression = EXPRESSIONS.cornerSegmentColor(thetaRad);
+                    // 3. Rotation values: Rotate X = 90 deg, Rotate Z = thetaDeg (No orientation properties!)
+                    segTr.property("ADBE Rotate X").setValue(90);
+                    segTr.property("ADBE Rotate Y").setValue(0);
+                    segTr.property("ADBE Rotate Z").setValue(thetaDeg);
+
+                    // 4. Opacity expression automatically hides segment when corner is not rounded
+                    segTr.property("ADBE Opacity").expression = EXPRESSIONS.cornerSegmentOpacity(cId);
+
+                    var segContents = segLayer.property("ADBE Root Vectors Group");
+                    var segGroup = segContents.addProperty("ADBE Vector Group");
+                    var segVecs = segGroup.property("ADBE Vectors Group");
+
+                    var segRect = segVecs.addProperty("ADBE Vector Shape - Rect");
+                    segRect.name = "Segment Rect";
+                    segRect.property("ADBE Vector Rect Size").expression =
+                        EXPRESSIONS.cornerSegmentSize(cId, S);
+
+                    var segFill = segVecs.addProperty("ADBE Vector Graphic - Fill");
+                    segFill.name = "Segment Fill";
+                    segFill.property("ADBE Vector Fill Color").expression =
+                        EXPRESSIONS.cornerSegmentColor(thetaRad);
                 }
             }
 
-            // Move Master Controller to top
+
+            // ----------------------------------------------------------------
+            // 6. FINALIZE LAYER STACK & SELECTION
+            // ----------------------------------------------------------------
             ctrl.moveToBeginning();
             targetComp.hideShyLayers = params.shySecondary;
+
+            // Select master controller for immediate user convenience
+            for (var i = 1; i <= targetComp.numLayers; i++) {
+                targetComp.layer(i).selected = false;
+            }
+            ctrl.selected = true;
 
         } catch (err) {
             alert("Error building rig: " + err.toString(), SCRIPT_NAME);
@@ -855,194 +898,264 @@
         }
     }
 
-    // ScriptUI Interface Builder
+
+    // ========================================================================
+    // SCRIPTUI USER INTERFACE PANEL
+    // ========================================================================
     function buildUI(thisObj) {
-        var win = (thisObj instanceof Panel) ? thisObj : new Window("palette", SCRIPT_NAME, undefined, { resizeable: true });
+        var win = (thisObj instanceof Panel)
+            ? thisObj
+            : new Window("palette", SCRIPT_NAME + " v" + SCRIPT_VERSION, undefined, { resizeable: true });
+
         win.orientation = "column";
         win.alignChildren = ["fill", "top"];
         win.spacing = 8;
         win.margins = 10;
 
-        // Title Header
-        var titleGrp = win.add("group");
-        titleGrp.orientation = "row";
-        titleGrp.alignChildren = ["left", "center"];
-        var titleTxt = titleGrp.add("statictext", undefined, SCRIPT_NAME);
-        titleTxt.graphics.font = ScriptUI.newFont("sans-serif", "bold", 14);
-        var verTxt = titleGrp.add("statictext", undefined, "v" + SCRIPT_VERSION);
-        verTxt.graphics.foregroundColor = win.graphics.newPen(win.graphics.PenType.SOLID_COLOR, [0.5, 0.5, 0.5, 1], 1);
+        // Header Title & Version Information
+        var headerGrp = win.add("group");
+        headerGrp.orientation = "row";
+        headerGrp.alignChildren = ["left", "center"];
 
-        // Tabbed Panel
+        var titleTxt = headerGrp.add("statictext", undefined, SCRIPT_NAME);
+        titleTxt.graphics.font = ScriptUI.newFont("sans-serif", "bold", 13);
+
+        var verTxt = headerGrp.add("statictext", undefined, "v" + SCRIPT_VERSION);
+        verTxt.graphics.foregroundColor = win.graphics.newPen(win.graphics.PenType.SOLID_COLOR, [0.45, 0.45, 0.45, 1], 1);
+
         var tabPnl = win.add("tabbedpanel");
         tabPnl.alignChildren = ["fill", "fill"];
 
-        // ---------------- TAB 1: GEOMETRY ----------------
-        var tabGeom = tabPnl.add("tab", undefined, "Geometry");
+
+        // ====================================================================
+        // TAB 1: 2D GEOMETRY
+        // ====================================================================
+        var tabGeom = tabPnl.add("tab", undefined, "2D Geometry");
         tabGeom.alignChildren = ["fill", "top"];
         tabGeom.spacing = 6;
 
-        // Preset Selector
+        // Preset Pulldown
         var presetGrp = tabGeom.add("group");
-        presetGrp.add("statictext", undefined, "Quick Preset:");
+        presetGrp.add("statictext", undefined, "Size Preset:");
         var presetList = presetGrp.add("dropdownlist", undefined, [
-            "Custom",
-            "Smartphone Mockup (Phone Screen)",
-            "Credit / ID Card",
-            "Rounded 3D Tile",
-            "UI Button Pill",
-            "Sharp Corner Box"
+            "Custom (600 x 300)",
+            "Square (1080 x 1080)",
+            "16:9 (1080p - 1920 x 1080)",
+            "4:3 (1440 x 1080)",
+            "2:1 (1920 x 960)",
+            "Credit Card (856 x 540)"
         ]);
         presetList.selection = 0;
 
-        // Dimensions Group
-        var dimGrp = tabGeom.add("panel", undefined, "Dimensions (px)");
-        dimGrp.alignChildren = ["fill", "top"];
-        dimGrp.spacing = 4;
+        // Dimensions Group (Default: 600 x 300)
+        var dimPnl = tabGeom.add("panel", undefined, "Dimensions (px)");
+        dimPnl.alignChildren = ["fill", "top"];
+        dimPnl.spacing = 4;
 
-        var wGrp = dimGrp.add("group");
-        wGrp.add("statictext", undefined, "Width:").characters = 8;
+        var wGrp = dimPnl.add("group");
+        wGrp.add("statictext", undefined, "Width:").characters = 9;
         var editWidth = wGrp.add("edittext", undefined, "600");
         editWidth.characters = 6;
         var slWidth = wGrp.add("slider", undefined, 600, 20, 3840);
         slWidth.onChanging = function () { editWidth.text = Math.round(this.value); };
         editWidth.onChange = function () { slWidth.value = parseFloat(this.text) || 600; };
 
-        var hGrp = dimGrp.add("group");
-        hGrp.add("statictext", undefined, "Height:").characters = 8;
-        var editHeight = hGrp.add("edittext", undefined, "400");
+        var hGrp = dimPnl.add("group");
+        hGrp.add("statictext", undefined, "Height:").characters = 9;
+        var editHeight = hGrp.add("edittext", undefined, "300");
         editHeight.characters = 6;
-        var slHeight = hGrp.add("slider", undefined, 400, 20, 2160);
+        var slHeight = hGrp.add("slider", undefined, 300, 20, 2160);
         slHeight.onChanging = function () { editHeight.text = Math.round(this.value); };
-        editHeight.onChange = function () { slHeight.value = parseFloat(this.text) || 400; };
+        editHeight.onChange = function () { slHeight.value = parseFloat(this.text) || 300; };
 
-        // Corner Radii Group
-        var radPnl = tabGeom.add("panel", undefined, "Corner Radii (px)");
+        // Corner Radii Panel (Default Radii: 200, 100, 50, 25)
+        var radPnl = tabGeom.add("panel", undefined, "Corner Radii & Rounding (Timeline Animatable)");
         radPnl.alignChildren = ["fill", "top"];
         radPnl.spacing = 4;
 
-        var linkCheck = radPnl.add("checkbox", undefined, "Link All 4 Corners (Uses Top-Left)");
-        linkCheck.value = true;
+        var masterRoundCheck = radPnl.add("checkbox", undefined, "Round Corners (Master Switch)");
+        masterRoundCheck.value = true;
 
-        function addRadiusRow(label, defaultVal) {
-            var g = radPnl.add("group");
-            g.add("statictext", undefined, label).characters = 12;
-            var ed = g.add("edittext", undefined, defaultVal.toString());
+        var linkCheck = radPnl.add("checkbox", undefined, "Link All 4 Corners (Sync with Top-Left)");
+        linkCheck.value = false;
+
+        function addCornerRow(label, defaultRadius) {
+            var row = radPnl.add("group");
+            row.alignChildren = ["left", "center"];
+
+            var chk = row.add("checkbox", undefined, label);
+            chk.preferredSize.width = 115;
+            chk.value = true;
+
+            var ed = row.add("edittext", undefined, defaultRadius.toString());
             ed.characters = 5;
-            var sl = g.add("slider", undefined, defaultVal, 0, 500);
+
+            var sl = row.add("slider", undefined, defaultRadius, 0, 500);
             sl.onChanging = function () { ed.text = Math.round(this.value); };
-            ed.onChange = function () { sl.value = parseFloat(this.text) || defaultVal; };
-            return { group: g, edit: ed, slider: sl };
+            ed.onChange = function () { sl.value = parseFloat(this.text) || defaultRadius; };
+
+            return { group: row, check: chk, edit: ed, slider: sl };
         }
 
-        var rTL = addRadiusRow("Top-Left:", 80);
-        var rTR = addRadiusRow("Top-Right:", 80);
-        var rBR = addRadiusRow("Bottom-Right:", 80);
-        var rBL = addRadiusRow("Bottom-Left:", 80);
+        var cTL = addCornerRow("Top-Left:", 200);
+        var cTR = addCornerRow("Top-Right:", 100);
+        var cBR = addCornerRow("Bottom-Right:", 50);
+        var cBL = addCornerRow("Bottom-Left:", 25);
 
-        function updateRadiiUI() {
-            var isLinked = linkCheck.value;
-            rTR.group.enabled = !isLinked;
-            rBR.group.enabled = !isLinked;
-            rBL.group.enabled = !isLinked;
+        function updateCornerUI() {
+            var masterOn = masterRoundCheck.value;
+            linkCheck.enabled = masterOn;
+
+            var isLinked = masterOn && linkCheck.value;
+            cTL.group.enabled = masterOn;
+            cTR.group.enabled = masterOn && !isLinked;
+            cBR.group.enabled = masterOn && !isLinked;
+            cBL.group.enabled = masterOn && !isLinked;
+
             if (isLinked) {
-                rTR.edit.text = rTL.edit.text;
-                rTR.slider.value = rTL.slider.value;
-                rBR.edit.text = rTL.edit.text;
-                rBR.slider.value = rTL.slider.value;
-                rBL.edit.text = rTL.edit.text;
-                rBL.slider.value = rTL.slider.value;
+                cTR.check.value = cTL.check.value;
+                cBR.check.value = cTL.check.value;
+                cBL.check.value = cTL.check.value;
+
+                cTR.edit.text = cTL.edit.text;
+                cTR.slider.value = cTL.slider.value;
+                cBR.edit.text = cTL.edit.text;
+                cBR.slider.value = cTL.slider.value;
+                cBL.edit.text = cTL.edit.text;
+                cBL.slider.value = cTL.slider.value;
             }
         }
 
-        rTL.slider.onChanging = function () {
-            rTL.edit.text = Math.round(this.value);
-            if (linkCheck.value) updateRadiiUI();
+        masterRoundCheck.onClick = updateCornerUI;
+        linkCheck.onClick = updateCornerUI;
+
+        cTL.check.onClick = function () {
+            if (linkCheck.value) updateCornerUI();
         };
-        rTL.edit.onChange = function () {
-            rTL.slider.value = parseFloat(this.text) || 0;
-            if (linkCheck.value) updateRadiiUI();
+        cTL.slider.onChanging = function () {
+            cTL.edit.text = Math.round(this.value);
+            if (linkCheck.value) updateCornerUI();
+        };
+        cTL.edit.onChange = function () {
+            cTL.slider.value = parseFloat(this.text) || 0;
+            if (linkCheck.value) updateCornerUI();
         };
 
-        linkCheck.onClick = function () {
-            updateRadiiUI();
+        presetList.onChange = function () {
+            switch (presetList.selection.index) {
+                case 0: // Custom 600x300
+                    editWidth.text = "600"; slWidth.value = 600;
+                    editHeight.text = "300"; slHeight.value = 300;
+                    linkCheck.value = false;
+                    cTL.check.value = true; cTL.edit.text = "200"; cTL.slider.value = 200;
+                    cTR.check.value = true; cTR.edit.text = "100"; cTR.slider.value = 100;
+                    cBR.check.value = true; cBR.edit.text = "50";  cBR.slider.value = 50;
+                    cBL.check.value = true; cBL.edit.text = "25";  cBL.slider.value = 25;
+                    break;
+                case 1: // Square 1080x1080
+                    editWidth.text = "1080"; slWidth.value = 1080;
+                    editHeight.text = "1080"; slHeight.value = 1080;
+                    linkCheck.value = true;
+                    cTL.check.value = true; cTL.edit.text = "120"; cTL.slider.value = 120;
+                    break;
+                case 2: // 16:9 1080p (1920x1080)
+                    editWidth.text = "1920"; slWidth.value = 1920;
+                    editHeight.text = "1080"; slHeight.value = 1080;
+                    linkCheck.value = true;
+                    cTL.check.value = true; cTL.edit.text = "80"; cTL.slider.value = 80;
+                    break;
+                case 3: // 4:3 (1440x1080)
+                    editWidth.text = "1440"; slWidth.value = 1440;
+                    editHeight.text = "1080"; slHeight.value = 1080;
+                    linkCheck.value = true;
+                    cTL.check.value = true; cTL.edit.text = "70"; cTL.slider.value = 70;
+                    break;
+                case 4: // 2:1 (1920x960)
+                    editWidth.text = "1920"; slWidth.value = 1920;
+                    editHeight.text = "960"; slHeight.value = 960;
+                    linkCheck.value = true;
+                    cTL.check.value = true; cTL.edit.text = "60"; cTL.slider.value = 60;
+                    break;
+                case 5: // Credit Card (856x540 ISO/IEC 7810 ID-1)
+                    editWidth.text = "856"; slWidth.value = 856;
+                    editHeight.text = "540"; slHeight.value = 540;
+                    linkCheck.value = true;
+                    cTL.check.value = true; cTL.edit.text = "32"; cTL.slider.value = 32;
+                    break;
+            }
+            updateCornerUI();
         };
-        updateRadiiUI();
 
-        // ---------------- TAB 2: EXTRUSION & EDGES ----------------
-        var tabExt = tabPnl.add("tab", undefined, "Extrusion");
+        updateCornerUI();
+
+
+        // ====================================================================
+        // TAB 2: 3D EXTRUSION
+        // ====================================================================
+        var tabExt = tabPnl.add("tab", undefined, "3D Extrusion");
         tabExt.alignChildren = ["fill", "top"];
         tabExt.spacing = 6;
 
-        var extCheck = tabExt.add("checkbox", undefined, "Extrude (3D Pseudo-Mesh)");
+        var extCheck = tabExt.add("checkbox", undefined, "Extrude (3D Mesh)");
         extCheck.value = true;
 
         var extPnl = tabExt.add("panel", undefined, "Extrusion Parameters");
         extPnl.alignChildren = ["fill", "top"];
         extPnl.spacing = 5;
 
-        // Depth
+        // Depth with negative value support (-500 to 500, default 60)
         var depthGrp = extPnl.add("group");
-        depthGrp.add("statictext", undefined, "Depth:").characters = 14;
+        depthGrp.add("statictext", undefined, "Depth (px):").characters = 15;
         var editDepth = depthGrp.add("edittext", undefined, "60");
         editDepth.characters = 6;
         var slDepth = depthGrp.add("slider", undefined, 60, -500, 500);
         slDepth.onChanging = function () { editDepth.text = Math.round(this.value); };
         editDepth.onChange = function () { slDepth.value = parseFloat(this.text) || 60; };
 
-        // Segments (6 - 24 strictly needed)
+        // Segments slider: min 6, max 15, default 6
         var segGrp = extPnl.add("group");
-        segGrp.add("statictext", undefined, "Arc Segments:").characters = 14;
-        var editSeg = segGrp.add("edittext", undefined, "10");
+        segGrp.add("statictext", undefined, "Arc Segments:").characters = 15;
+        var editSeg = segGrp.add("edittext", undefined, "6");
         editSeg.characters = 6;
-        var slSeg = segGrp.add("slider", undefined, 10, 6, 24);
+        var slSeg = segGrp.add("slider", undefined, 6, 6, 15);
         slSeg.onChanging = function () { editSeg.text = Math.round(this.value); };
         editSeg.onChange = function () {
-            var val = Math.max(6, Math.min(24, Math.round(parseFloat(this.text) || 10)));
+            var val = Math.max(6, Math.min(15, Math.round(parseFloat(this.text) || 6)));
             this.text = val.toString();
             slSeg.value = val;
         };
-
-        // Precision Seam Overlap
-        var seamGrp = extPnl.add("group");
-        seamGrp.add("statictext", undefined, "Seam Overlap:").characters = 14;
-        var editSeam = seamGrp.add("edittext", undefined, "0.5");
-        editSeam.characters = 6;
-        seamGrp.add("statictext", undefined, "px (prevents hairline gaps)");
-
-        // Cap Z-Offset
-        var offGrp = extPnl.add("group");
-        offGrp.add("statictext", undefined, "Cap Inset/Offset:").characters = 14;
-        var editCapOff = offGrp.add("edittext", undefined, "0.1");
-        editCapOff.characters = 6;
-        offGrp.add("statictext", undefined, "px (prevents Z-fighting)");
+        segGrp.add("statictext", undefined, "(Min 6, Max 15, Default 6)");
 
         // Shading Intensity
         var shdGrp = extPnl.add("group");
-        shdGrp.add("statictext", undefined, "Curved Shading:").characters = 14;
+        shdGrp.add("statictext", undefined, "Curved Shading:").characters = 15;
         var editShd = shdGrp.add("edittext", undefined, "15");
         editShd.characters = 6;
         var slShd = shdGrp.add("slider", undefined, 15, 0, 100);
         slShd.onChanging = function () { editShd.text = Math.round(this.value); };
         editShd.onChange = function () { slShd.value = parseFloat(this.text) || 15; };
 
-        // ---------------- TAB 3: COLORS & STYLING ----------------
+
+        // ====================================================================
+        // TAB 3: COLORS
+        // ====================================================================
         var tabCol = tabPnl.add("tab", undefined, "Colors");
         tabCol.alignChildren = ["fill", "top"];
         tabCol.spacing = 6;
 
-        var colPnl = tabCol.add("panel", undefined, "Color Settings");
+        var colPnl = tabCol.add("panel", undefined, "Color Palette");
         colPnl.alignChildren = ["fill", "top"];
         colPnl.spacing = 6;
 
-        function addColorSelector(label, defaultHex) {
+        function addColorRow(label, defaultHex) {
             var g = colPnl.add("group");
-            g.add("statictext", undefined, label).characters = 14;
+            g.add("statictext", undefined, label).characters = 18;
             var ed = g.add("edittext", undefined, defaultHex);
             ed.characters = 8;
-            var colBtn = g.add("button", undefined, "Pick");
-            colBtn.size = [50, 22];
+            var btn = g.add("button", undefined, "Pick");
+            btn.size = [50, 22];
 
-            colBtn.onClick = function () {
+            btn.onClick = function () {
                 var currentRgba = hexToRgba(ed.text);
                 var picked = ($.colorPicker) ? $.colorPicker(currentRgba) : null;
                 if (picked !== null && picked !== -1) {
@@ -1057,147 +1170,72 @@
             return ed;
         }
 
-        var colTop = addColorSelector("Cap Top / Front:", "#1E88E5");
-        var colBot = addColorSelector("Cap Bottom / Back:", "#0D47A1");
-        var colEdge = addColorSelector("Edge Walls:", "#1565C0");
+        // Defaults: Edges Blue (#1E88E5), Front Dark Red (#8B0000), Back Dark Green (#006400)
+        var colFront = addColorRow("Front Side (Cap Top):", "#8B0000"); // Dark Red
+        var colBack  = addColorRow("Back Side (Cap Bottom):", "#006400"); // Dark Green
+        var colEdge  = addColorRow("Edge Walls & Arcs:", "#1E88E5");     // Blue
 
-        // ---------------- TAB 4: SCREEN / COMP PLAYBACK ----------------
-        var tabScreen = tabPnl.add("tab", undefined, "Cap Screen");
-        tabScreen.alignChildren = ["fill", "top"];
-        tabScreen.spacing = 6;
+        var paintInnerCheck = tabCol.add("checkbox", undefined, "Paint inner sides using edge color");
+        paintInnerCheck.value = true;
 
-        var scModeGrp = tabScreen.add("group");
-        scModeGrp.add("statictext", undefined, "Screen Mode:");
-        var screenModeList = scModeGrp.add("dropdownlist", undefined, [
-            "None",
-            "Top / Front Cap Only",
-            "Bottom / Back Cap Only",
-            "Both Caps (Shared Comp)",
-            "Both Caps (Separate Comps)"
-        ]);
-        screenModeList.selection = 0;
 
-        var scPnl = tabScreen.add("panel", undefined, "Screen Placement & Scaling");
-        scPnl.alignChildren = ["fill", "top"];
-        scPnl.spacing = 5;
+        // ====================================================================
+        // TAB 4: FINE TUNING & PERFORMANCE
+        // ====================================================================
+        var tabFine = tabPnl.add("tab", undefined, "Fine Tuning");
+        tabFine.alignChildren = ["fill", "top"];
+        tabFine.spacing = 6;
 
-        // Alignment
-        var alignGrp = scPnl.add("group");
-        alignGrp.add("statictext", undefined, "Alignment:").characters = 12;
-        var alignList = alignGrp.add("dropdownlist", undefined, [
-            "Center",
-            "Top-Left",
-            "Top-Center",
-            "Top-Right",
-            "Center-Left",
-            "Center-Right",
-            "Bottom-Left",
-            "Bottom-Center",
-            "Bottom-Right"
-        ]);
-        alignList.selection = 0;
+        var finePnl = tabFine.add("panel", undefined, "Precision Tolerances & Anti-Clipping");
+        finePnl.alignChildren = ["fill", "top"];
+        finePnl.spacing = 5;
 
-        // Scale Mode
-        var scaleModeGrp = scPnl.add("group");
-        scaleModeGrp.add("statictext", undefined, "Scale Mode:").characters = 12;
-        var scaleModeList = scaleModeGrp.add("dropdownlist", undefined, [
-            "Manual Scale (%)",
-            "Auto Fit (Inside)",
-            "Auto Fill (Cover)",
-            "Stretch to Cap"
-        ]);
-        scaleModeList.selection = 1;
+        // 1. Gap Tolerance (px) between edge segments
+        var seamGrp = finePnl.add("group");
+        seamGrp.add("statictext", undefined, "Gap Tolerance:").characters = 20;
+        var editSeam = seamGrp.add("edittext", undefined, "0.5");
+        editSeam.characters = 5;
+        seamGrp.add("statictext", undefined, "px (prevents hairline gaps)");
 
-        // Manual Scale
-        var manScaleGrp = scPnl.add("group");
-        manScaleGrp.add("statictext", undefined, "Scale Adjust:").characters = 12;
-        var editScreenScale = manScaleGrp.add("edittext", undefined, "100");
-        editScreenScale.characters = 5;
-        var slScreenScale = manScaleGrp.add("slider", undefined, 100, 10, 500);
-        slScreenScale.onChanging = function () { editScreenScale.text = Math.round(this.value); };
-        editScreenScale.onChange = function () { slScreenScale.value = parseFloat(this.text) || 100; };
+        // 2. Distance from edge to sides (px) to prevent clipping
+        var edgeSidesGrp = finePnl.add("group");
+        edgeSidesGrp.add("statictext", undefined, "Edge to Sides Distance:").characters = 20;
+        var editEdgeSides = edgeSidesGrp.add("edittext", undefined, "0.2");
+        editEdgeSides.characters = 5;
+        edgeSidesGrp.add("statictext", undefined, "px (prevents edge clipping)");
 
-        // Offsets
-        var scOffGrp = scPnl.add("group");
-        scOffGrp.add("statictext", undefined, "Offset (X, Y):").characters = 12;
-        var editOffX = scOffGrp.add("edittext", undefined, "0");
-        editOffX.characters = 4;
-        scOffGrp.add("statictext", undefined, ",");
-        var editOffY = scOffGrp.add("edittext", undefined, "0");
-        editOffY.characters = 4;
-        scOffGrp.add("statictext", undefined, "px");
+        // 3. Distance between inner side vs outer side (px)
+        var innerOuterGrp = finePnl.add("group");
+        innerOuterGrp.add("statictext", undefined, "Inner vs Outer Distance:").characters = 20;
+        var editInnerOuter = innerOuterGrp.add("edittext", undefined, "0.1");
+        editInnerOuter.characters = 5;
+        innerOuterGrp.add("statictext", undefined, "px (prevents Z-fighting)");
 
-        // ---------------- TAB 5: BUILD & RIG OPTIONS ----------------
-        var tabBuild = tabPnl.add("tab", undefined, "Build Options");
-        tabBuild.alignChildren = ["fill", "top"];
-        tabBuild.spacing = 6;
+        var perfPnl = tabFine.add("panel", undefined, "Performance & Debug");
+        perfPnl.alignChildren = ["fill", "top"];
+        perfPnl.spacing = 5;
 
-        var targetGrp = tabBuild.add("group");
-        targetGrp.add("statictext", undefined, "Build Destination:");
+        var occludeCheck = perfPnl.add("checkbox", undefined, "Enable Occlusion Culling (Hide Non-Visible Faces)");
+        occludeCheck.value = false;
+
+        var shyCheck = perfPnl.add("checkbox", undefined, "Shy Secondary Layers (Keep Timeline Clean)");
+        shyCheck.value = true;
+
+        var debugLabelCheck = perfPnl.add("checkbox", undefined, "Write Debug Text ('front' and 'back') on Faces");
+        debugLabelCheck.value = true;
+
+        var targetGrp = tabFine.add("group");
+        targetGrp.add("statictext", undefined, "Build Target:");
         var targetList = targetGrp.add("dropdownlist", undefined, [
-            "Dedicated 3D Precomp (Clean & Self-Contained)",
+            "Dedicated 3D Precomp (Recommended)",
             "Active Composition (Direct Layers)"
         ]);
         targetList.selection = 0;
 
-        var shyCheck = tabBuild.add("checkbox", undefined, "Shy Secondary Layers (Keep timeline organized)");
-        shyCheck.value = true;
 
-        // Preset Change Listener
-        presetList.onChange = function () {
-            switch (presetList.selection.index) {
-                case 1: // Smartphone
-                    editWidth.text = "450"; slWidth.value = 450;
-                    editHeight.text = "920"; slHeight.value = 920;
-                    linkCheck.value = true;
-                    rTL.edit.text = "75"; rTL.slider.value = 75;
-                    editDepth.text = "35"; slDepth.value = 35;
-                    editSeg.text = "10"; slSeg.value = 10;
-                    screenModeList.selection = 1;
-                    scaleModeList.selection = 1;
-                    colTop.text = "#101010"; colBot.text = "#252528"; colEdge.text = "#434346";
-                    break;
-                case 2: // Credit Card
-                    editWidth.text = "856"; slWidth.value = 856;
-                    editHeight.text = "540"; slHeight.value = 540;
-                    linkCheck.value = true;
-                    rTL.edit.text = "32"; rTL.slider.value = 32;
-                    editDepth.text = "8"; slDepth.value = 8;
-                    editSeg.text = "8"; slSeg.value = 8;
-                    colTop.text = "#D4AF37"; colBot.text = "#B8860B"; colEdge.text = "#C5A028";
-                    break;
-                case 3: // 3D Tile
-                    editWidth.text = "500"; slWidth.value = 500;
-                    editHeight.text = "500"; slHeight.value = 500;
-                    linkCheck.value = true;
-                    rTL.edit.text = "60"; rTL.slider.value = 60;
-                    editDepth.text = "80"; slDepth.value = 80;
-                    editSeg.text = "10"; slSeg.value = 10;
-                    colTop.text = "#00C853"; colBot.text = "#1B5E20"; colEdge.text = "#2E7D32";
-                    break;
-                case 4: // UI Button Pill
-                    editWidth.text = "360"; slWidth.value = 360;
-                    editHeight.text = "100"; slHeight.value = 100;
-                    linkCheck.value = true;
-                    rTL.edit.text = "50"; rTL.slider.value = 50;
-                    editDepth.text = "25"; slDepth.value = 25;
-                    editSeg.text = "12"; slSeg.value = 12;
-                    colTop.text = "#FF6D00"; colBot.text = "#D50000"; colEdge.text = "#E65100";
-                    break;
-                case 5: // Sharp Corner Box
-                    editWidth.text = "500"; slWidth.value = 500;
-                    editHeight.text = "350"; slHeight.value = 350;
-                    linkCheck.value = true;
-                    rTL.edit.text = "0"; rTL.slider.value = 0;
-                    editDepth.text = "120"; slDepth.value = 120;
-                    editSeg.text = "6"; slSeg.value = 6;
-                    colTop.text = "#673AB7"; colBot.text = "#311B92"; colEdge.text = "#512DA8";
-                    break;
-            }
-            updateRadiiUI();
-        };
-
-        // ---------------- ACTION BUTTONS ----------------
+        // ====================================================================
+        // BUILD BUTTON ACTION
+        // ====================================================================
         var btnGrp = win.add("group");
         btnGrp.orientation = "row";
         btnGrp.alignChildren = ["fill", "center"];
@@ -1207,32 +1245,43 @@
         buildBtn.graphics.font = ScriptUI.newFont("sans-serif", "bold", 12);
 
         buildBtn.onClick = function () {
-            var screenModes = ["none", "top", "bottom", "both", "both_sep"];
             var params = {
                 width: parseFloat(editWidth.text) || 600,
-                height: parseFloat(editHeight.text) || 400,
-                linkRadii: linkCheck.value,
-                radiusTL: parseFloat(rTL.edit.text) || 0,
-                radiusTR: parseFloat(rTR.edit.text) || 0,
-                radiusBR: parseFloat(rBR.edit.text) || 0,
-                radiusBL: parseFloat(rBL.edit.text) || 0,
+                height: parseFloat(editHeight.text) || 300,
+
+                roundCornersMaster: masterRoundCheck.value,
+                linkCorners: linkCheck.value,
+
+                roundTL: cTL.check.value,
+                radiusTL: parseFloat(cTL.edit.text) || 0,
+
+                roundTR: cTR.check.value,
+                radiusTR: parseFloat(cTR.edit.text) || 0,
+
+                roundBR: cBR.check.value,
+                radiusBR: parseFloat(cBR.edit.text) || 0,
+
+                roundBL: cBL.check.value,
+                radiusBL: parseFloat(cBL.edit.text) || 0,
+
                 isExtruded: extCheck.value,
                 depth: parseFloat(editDepth.text) || 60,
-                segments: Math.max(6, Math.min(24, Math.round(parseFloat(editSeg.text) || 10))),
-                seamOverlap: parseFloat(editSeam.text) || 0.5,
-                capOffset: parseFloat(editCapOff.text) || 0.1,
-                shading: parseFloat(editShd.text) || 15,
-                capTopColor: hexToRgba(colTop.text),
-                capBotColor: hexToRgba(colBot.text),
+                segments: Math.max(6, Math.min(15, Math.round(parseFloat(editSeg.text) || 6))),
+
+                capFrontColor: hexToRgba(colFront.text),
+                capBackColor: hexToRgba(colBack.text),
                 edgeColor: hexToRgba(colEdge.text),
-                screenMode: screenModes[screenModeList.selection.index],
-                screenAlign: alignList.selection.index,
-                screenScaleMode: scaleModeList.selection.index,
-                screenScale: parseFloat(editScreenScale.text) || 100,
-                screenOffsetX: parseFloat(editOffX.text) || 0,
-                screenOffsetY: parseFloat(editOffY.text) || 0,
-                targetMode: targetList.selection.index === 0 ? "precomp" : "active",
-                shySecondary: shyCheck.value
+                paintInnerSides: paintInnerCheck.value,
+
+                shading: parseFloat(editShd.text) || 15,
+                gapTolerance: parseFloat(editSeam.text) || 0.5,
+                edgeSidesDistance: parseFloat(editEdgeSides.text) || 0.2,
+                innerOuterDistance: parseFloat(editInnerOuter.text) || 0.1,
+
+                occlusionCulling: occludeCheck.value,
+                shySecondary: shyCheck.value,
+                showDebugLabels: debugLabelCheck.value,
+                targetMode: targetList.selection.index === 0 ? "precomp" : "active"
             };
 
             buildExtrusionRig(params);
@@ -1242,7 +1291,7 @@
         return win;
     }
 
-    // Launch UI
+    // Launch UI Panel
     var myUI = buildUI(thisObj);
     if (myUI instanceof Window) {
         myUI.center();

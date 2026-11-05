@@ -1,12 +1,17 @@
-# Extruded Round Corners Maker
+# Extruded Round Corners Maker (v2.0)
+
+[![Live Browser Simulator](https://img.shields.io/badge/Live%20Demo-AE%20ScriptUI%20Simulator-2c8cff?style=for-the-badge&logo=javascript)](https://work2survive.github.io/AE_JS_builder/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE)
 
 **A native 3D/2.5D Extruded Rounded Rectangle Generator & Animator for Adobe After Effects.**
+
+> **Live Browser Simulator**: Test, rotate, and preview 3D extruded rounded rectangles live in your web browser via the [AE JS & ScriptUI Simulator](https://work2survive.github.io/AE_JS_builder/) without opening After Effects!
 
 Built as a high-performance alternative to Cinema 4D / Ray-Traced rendering, **Extruded Round Corners Maker** generates mathematically precise 3D rounded rectangles using native 2D segment strips (strictly the needed segment count per 90° corner arc) and independent corner radii. 
 
 Everything is driven by live After Effects expressions parented to a single **Master Controller**, allowing full real-time animation directly on the timeline.
 
-Compatible with **Classic 3D** and **Advanced 3D** (AE 2024+).
+Compatible with **Classic 3D** and **Advanced 3D** across Adobe After Effects CC 2018 through CC 2026+.
 
 ---
 
@@ -17,14 +22,15 @@ Compatible with **Classic 3D** and **Advanced 3D** (AE 2024+).
 - Screen composition masking is encapsulated inside a self-contained 2D pre-comp wrapper, preventing 3D track-matte breaking in the Advanced 3D engine.
 - Renders instantly in real-time, fully compatible with standard AE Cameras and Lights.
 
-### 2. Independent Corner Control & "Link All 4 Corners"
+### 2. Independent Corner Control & W3C Proportional Overlap Protection
 - **Link All 4 Corners (Checkbox)**: When active, all 4 corners automatically take their radius directly from **Radius Top-Left**. You only need to keyframe one slider to animate all corners together!
 - **Independent Mode**: When unchecked, dial in separate radii for **Top-Left**, **Top-Right**, **Bottom-Right**, and **Bottom-Left**.
-- Built-in proportional clamping ensures corners never self-intersect or invert even if radii exceed the rectangle dimensions.
+- **W3C CSS Backgrounds & Borders Level 3 Overlap Protection**: Mathematical constraint solver dynamically scales radii proportionally ($f = \min(1.0, W/\text{topSum}, W/\text{bottomSum}, H/\text{leftSum}, H/\text{rightSum})$) so corners never collide, invert, or glitch even when animated to extreme values.
 
-### 3. Strictly Needed Segments (Zero Bloat, Zero Spiraling)
-- The rig generates **strictly the needed number of 2D strips** selected in the UI (e.g. 8, 10, or 12 segments per corner).
-- No excess hidden layers, no timeline clutter, and no over-rotation/spiraling.
+### 3. Strictly Needed Segments & Precision Geometry
+- The rig generates **strictly the needed number of 2D strips** selected in the UI (e.g. 6 to 15 segments per corner).
+- Utilizes pure Euler X and Z rotations with local Z apothem anchor point displacement ($r_{\text{chord}} = R \cdot \cos(\delta/2)$) for optimal AE rendering performance without gimbal locks or spiraling.
+- **Dynamic Straight Corner Fallback**: When any corner's rounding is set to 0 or unchecked, its arc segments gracefully hide and adjacent straight edge walls automatically extend to form a perfect sharp 90° corner.
 
 ### 4. Full Extrusion & Depth Control
 - **Extruded (Checkbox)**: Instantly switch between a flat 2D custom rounded rectangle and a full 3D extrusion.
@@ -36,8 +42,8 @@ Compatible with **Classic 3D** and **Advanced 3D** (AE 2024+).
 
 ### 6. Timeline & Expression Animatable Colors
 - Dedicated controls on the Master Controller for:
-  - **Cap Top Color**
-  - **Cap Bottom Color**
+  - **Cap Front / Top Color**
+  - **Cap Back / Bottom Color**
   - **Edge Color**
 - Keyframe colors directly on the timeline to create smooth lighting transitions or dynamic palette shifts.
 - **Cylindrical Shading Intensity**: Simulates realistic ambient light curvature around the rounded corners even without 3D scene lights.
@@ -121,7 +127,5 @@ The ScriptUI panel includes one-click presets for common design assets:
 
 ---
 
-
-
 ## 📄 License
-MIT License. Free to use, modify, and distribute.
+This project is licensed under the [MIT License](LICENSE).
