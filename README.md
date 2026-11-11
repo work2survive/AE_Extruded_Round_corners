@@ -2,6 +2,9 @@
 
 [![Live Browser Simulator](https://img.shields.io/badge/Live%20Demo-AE%20ScriptUI%20Simulator-2c8cff?style=for-the-badge&logo=javascript)](https://work2survive.github.io/AE_JS_builder/?jsx=extruded_round_rectangle.jsx)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE)
+[![Adobe After Effects](https://img.shields.io/badge/Adobe%20After%20Effects-CC%202018%20--%20CC%202026%2B-9999FF?style=for-the-badge&logo=adobeaftereffects)](https://www.adobe.com/products/aftereffects.html)
+
+**Live Demo**: [https://work2survive.github.io/AE_JS_builder/?jsx=extruded_round_rectangle.jsx](https://work2survive.github.io/AE_JS_builder/?jsx=extruded_round_rectangle.jsx)
 
 **A native 3D/2.5D Extruded Rounded Rectangle Generator & Animator for Adobe After Effects.**
 
