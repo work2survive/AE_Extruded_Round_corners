@@ -1,11 +1,11 @@
 # Extruded Round Corners Maker (v2.0)
 
-[![Live Browser Simulator](https://img.shields.io/badge/Live%20Demo-AE%20ScriptUI%20Simulator-2c8cff?style=for-the-badge&logo=javascript)](https://work2survive.github.io/AE_JS_builder/)
+[![Live Browser Simulator](https://img.shields.io/badge/Live%20Demo-AE%20ScriptUI%20Simulator-2c8cff?style=for-the-badge&logo=javascript)](https://work2survive.github.io/AE_JS_builder/?jsx=extruded_round_rectangle.jsx)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE)
 
 **A native 3D/2.5D Extruded Rounded Rectangle Generator & Animator for Adobe After Effects.**
 
-> **Live Browser Simulator**: Test, rotate, and preview 3D extruded rounded rectangles live in your web browser via the [AE JS & ScriptUI Simulator](https://work2survive.github.io/AE_JS_builder/) without opening After Effects!
+> **Live Browser Simulator**: Test, rotate, and preview 3D extruded rounded rectangles live in your web browser via the [AE JS & ScriptUI Simulator](https://work2survive.github.io/AE_JS_builder/?jsx=extruded_round_rectangle.jsx) without opening After Effects!
 
 Built as a high-performance alternative to Cinema 4D / Ray-Traced rendering, **Extruded Round Corners Maker** generates mathematically precise 3D rounded rectangles using native 2D segment strips (strictly the needed segment count per 90° corner arc) and independent corner radii. 
 
