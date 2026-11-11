@@ -12,9 +12,9 @@
  *   Window > ExtrudedRoundCornersMaker.jsx
  * 
  * Reference Repository (2D Geometry):
- *   https://github.com/work2survive/AECustomRoundedRect
+ *   https://github.com/work2survive/AE_Custom_Rounded_Rect
  * Planned Repository:
- *   https://github.com/work2survive/Extruded-Round-Corners-Maker
+ *   https://github.com/work2survive/AE_Extruded_Round_corners
  * 
  * Compatibility: Adobe After Effects CC 2018 through CC 2026+ (All Languages)
  * Author:        work2survive & Antigravity
@@ -112,8 +112,8 @@
     // ========================================================================
     var SCRIPT_NAME = "Extruded Round Corners Maker";
     var SCRIPT_VERSION = "2.0.0";
-    var GITHUB_REF_URL = "https://github.com/work2survive/AECustomRoundedRect";
-    var GITHUB_REPO_URL = "https://github.com/work2survive/Extruded-Round-Corners-Maker";
+    var GITHUB_REF_URL = "https://github.com/work2survive/AE_Custom_Rounded_Rect";
+    var GITHUB_REPO_URL = "https://github.com/work2survive/AE_Extruded_Round_corners";
 
     // Standard cubic Bézier constant for 90-degree circular arc approximation:
     // kappa = 4/3 * (sqrt(2) - 1) =~ 0.5522847498307936

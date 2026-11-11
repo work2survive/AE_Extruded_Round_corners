@@ -1,15 +1,15 @@
 # Extruded Round Corners Maker (v2.0)
 
-[![Live Browser Simulator](https://img.shields.io/badge/Live%20Demo-AE%20ScriptUI%20Simulator-2c8cff?style=for-the-badge&logo=javascript)](https://work2survive.github.io/AE_JS_builder/?jsx=extruded_round_rectangle.jsx)
+[![Live Browser Simulator](https://img.shields.io/badge/Live%20Demo-AE%20ScriptUI%20Simulator-2c8cff?style=for-the-badge&logo=javascript)](https://work2survive.github.io/AE_JS_builder/?jsx=extruded_round_rectangle.jsx&autobuild=true)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE)
 [![Adobe After Effects](https://img.shields.io/badge/Adobe%20After%20Effects-CC%202018%20--%20CC%202026%2B-9999FF?style=for-the-badge&logo=adobeaftereffects)](https://www.adobe.com/products/aftereffects.html)
 [![Built with Antigravity](https://img.shields.io/badge/Built%20With-Antigravity-4285F4?style=for-the-badge&logo=google)](https://deepmind.google/)
 
-**Live Demo**: [https://work2survive.github.io/AE_JS_builder/?jsx=extruded_round_rectangle.jsx](https://work2survive.github.io/AE_JS_builder/?jsx=extruded_round_rectangle.jsx)
+**Live Demo**: [https://work2survive.github.io/AE_JS_builder/?jsx=extruded_round_rectangle.jsx&autobuild=true](https://work2survive.github.io/AE_JS_builder/?jsx=extruded_round_rectangle.jsx&autobuild=true)
 
 **A native 3D/2.5D Extruded Rounded Rectangle Generator & Animator for Adobe After Effects.**
 
-> **Live Browser Simulator**: Test, rotate, and preview 3D extruded rounded rectangles live in your web browser via the [AE JS & ScriptUI Simulator](https://work2survive.github.io/AE_JS_builder/?jsx=extruded_round_rectangle.jsx) without opening After Effects!
+> **Live Browser Simulator**: Test, rotate, and preview 3D extruded rounded rectangles live in your web browser via the [AE JS & ScriptUI Simulator](https://work2survive.github.io/AE_JS_builder/?jsx=extruded_round_rectangle.jsx&autobuild=true) without opening After Effects!
 
 Built as a high-performance alternative to Cinema 4D / Ray-Traced rendering, **Extruded Round Corners Maker** generates mathematically precise 3D rounded rectangles using native 2D segment strips (strictly the needed segment count per 90° corner arc) and independent corner radii. 
 
@@ -67,14 +67,22 @@ Compatible with **Classic 3D** and **Advanced 3D** across Adobe After Effects CC
 
 ## 📦 Installation
 
-### Method A: One-Click Installer Script
+### Method A: After Effects Menu (Recommended)
+1. Open Adobe After Effects.
+2. Navigate to **File > Scripts > Install ScriptUI Panel...**
+3. Browse to and select `ExtrudedRoundCornersMaker.jsx` (or `extruded_round_rectangle.jsx`).
+4. After Effects will automatically copy the script into your user `ScriptUI Panels` folder.
+5. Restart After Effects when prompted.
+6. Access and dock the panel from the top menu: **Window > ExtrudedRoundCornersMaker.jsx**.
+
+### Method B: One-Click Installer Script
 1. Open Adobe After Effects.
 2. Go to **File > Scripts > Run Script File...**
 3. Select `installer/install_script.jsx`.
 4. The installer will copy `ExtrudedRoundCornersMaker.jsx` into your `Scripts/ScriptUI Panels/` directory.
 5. Restart After Effects. The tool will appear under the **Window** menu.
 
-### Method B: Manual Installation
+### Method C: Manual Installation
 Copy `ExtrudedRoundCornersMaker.jsx` directly into your After Effects ScriptUI Panels directory:
 - **Windows**: `C:\Program Files\Adobe\Adobe After Effects <version>\Support Files\Scripts\ScriptUI Panels\`
 - **macOS**: `/Applications/Adobe After Effects <version>/Scripts/ScriptUI Panels/`
