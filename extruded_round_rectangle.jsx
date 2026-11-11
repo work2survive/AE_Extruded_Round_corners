@@ -228,20 +228,140 @@
     var warnedSecurityPref = false;
 
     var DEFAULT_DIM_PRESETS = [
-        { name: "Card", width: 500, height: 300, depth: 120 },
-        { name: "Cube", width: 350, height: 350, depth: 350 },
-        { name: "Pill", width: 600, height: 200, depth: 80 },
-        { name: "Tile", width: 400, height: 400, depth: 30 },
-        { name: "Phone / Mobile", width: 360, height: 760, depth: 30 },
-        { name: "Tablet", width: 720, height: 960, depth: 25 },
-        { name: "Wide Banner", width: 900, height: 180, depth: 50 }
+        {
+            name: "Phone / Mobile",
+            width: 360,
+            height: 760,
+            depth: 30,
+            radius: 44,
+            frontColor: "#111111",
+            backColor: "#1a1a1a",
+            capsOpacity: 100,
+            sidesColor: "#0a0a0a",
+            sidesOpacity: 100,
+            strokeColor: "#000000",
+            strokeWidth: 0,
+            strokeOpacity: 0
+        },
+        {
+            name: "Card",
+            width: 500,
+            height: 300,
+            depth: 15,
+            radius: 24,
+            frontColor: "#FFF8DC",
+            backColor: "#FEF3BD",
+            capsOpacity: 100,
+            sidesColor: "#EBD997",
+            sidesOpacity: 100,
+            strokeColor: "#FFFFFF",
+            strokeWidth: 0,
+            strokeOpacity: 0
+        },
+        {
+            name: "Tablet",
+            width: 720,
+            height: 960,
+            depth: 25,
+            radius: 32,
+            frontColor: "#CFD4D9",
+            backColor: "#C2C7CD",
+            capsOpacity: 100,
+            sidesColor: "#9AA1A8",
+            sidesOpacity: 100,
+            strokeColor: "#222428",
+            strokeWidth: 3,
+            strokeOpacity: 100
+        },
+        {
+            name: "Cube",
+            width: 350,
+            height: 350,
+            depth: 350,
+            radius: 40,
+            frontColor: "#2288EE",
+            backColor: "#EE8822",
+            capsOpacity: 100,
+            sidesColor: "#1166CC",
+            sidesOpacity: 90,
+            strokeColor: "#FFFFFF",
+            strokeWidth: 2,
+            strokeOpacity: 100
+        },
+        {
+            name: "Pill",
+            width: 600,
+            height: 200,
+            depth: 80,
+            radius: 100,
+            frontColor: "#00C2CB",
+            backColor: "#FF6584",
+            capsOpacity: 100,
+            sidesColor: "#009FA7",
+            sidesOpacity: 100,
+            strokeColor: "#FFFFFF",
+            strokeWidth: 2,
+            strokeOpacity: 90
+        },
+        {
+            name: "Tile",
+            width: 400,
+            height: 400,
+            depth: 30,
+            radius: 20,
+            frontColor: "#333D4B",
+            backColor: "#232B35",
+            capsOpacity: 100,
+            sidesColor: "#1D242C",
+            sidesOpacity: 100,
+            strokeColor: "#4E5969",
+            strokeWidth: 1.5,
+            strokeOpacity: 100
+        },
+        {
+            name: "Wide Banner",
+            width: 900,
+            height: 180,
+            depth: 50,
+            radius: 16,
+            frontColor: "#6C5CE7",
+            backColor: "#A29BFE",
+            capsOpacity: 100,
+            sidesColor: "#5844D1",
+            sidesOpacity: 95,
+            strokeColor: "#FFFFFF",
+            strokeWidth: 2,
+            strokeOpacity: 90
+        }
     ];
+
+    function parsePresetObject(raw, defaultName) {
+        if (!raw) return null;
+        var w = parseFloat(raw.width), h = parseFloat(raw.height), d = parseFloat(raw.depth);
+        if (isNaN(w) || isNaN(h) || isNaN(d)) return null;
+        var obj = {
+            name: String(raw.name || defaultName),
+            width: w,
+            height: h,
+            depth: d
+        };
+        if (raw.radius !== undefined && !isNaN(parseFloat(raw.radius))) obj.radius = parseFloat(raw.radius);
+        if (raw.frontColor) obj.frontColor = String(raw.frontColor);
+        if (raw.backColor) obj.backColor = String(raw.backColor);
+        if (raw.capsOpacity !== undefined && !isNaN(parseFloat(raw.capsOpacity))) obj.capsOpacity = parseFloat(raw.capsOpacity);
+        if (raw.sidesColor) obj.sidesColor = String(raw.sidesColor);
+        if (raw.sidesOpacity !== undefined && !isNaN(parseFloat(raw.sidesOpacity))) obj.sidesOpacity = parseFloat(raw.sidesOpacity);
+        if (raw.strokeColor) obj.strokeColor = String(raw.strokeColor);
+        if (raw.strokeWidth !== undefined && !isNaN(parseFloat(raw.strokeWidth))) obj.strokeWidth = parseFloat(raw.strokeWidth);
+        if (raw.strokeOpacity !== undefined && !isNaN(parseFloat(raw.strokeOpacity))) obj.strokeOpacity = parseFloat(raw.strokeOpacity);
+        return obj;
+    }
 
     function cloneDefaultPresets() {
         var arr = [];
         for (var i = 0; i < DEFAULT_DIM_PRESETS.length; i++) {
             var p = DEFAULT_DIM_PRESETS[i];
-            arr.push({ name: p.name, width: p.width, height: p.height, depth: p.depth });
+            arr.push(parsePresetObject(p, p.name));
         }
         return arr;
     }
@@ -346,8 +466,9 @@
             pFile.encoding = "UTF-8";
             if (pFile.open("w")) {
                 var dataObj = {
-                    "description": "After Effects Extruded Round Rectangle - Dimension Presets (width, height, depth in px). Edit freely, then press the reload button in the panel.",
-                    "version": "1.0",
+                    "$schema": "https://json-schema.org/draft/2020-12/schema",
+                    "description": "After Effects Extruded Round Rectangle - Style & Dimension Presets (dimensions, radii, fill, colors, opacity, stroke line). Edit freely, then press the reload button in the panel.",
+                    "version": "1.1",
                     "presets": cloneDefaultPresets()
                 };
                 pFile.write(JSONPolyfill.stringify(dataObj, null, 2));
@@ -379,20 +500,14 @@
                     var loaded = [];
                     if (list && typeof list.length === "number") {
                         for (var i = 0; i < list.length; i++) {
-                            var p = list[i];
-                            if (!p) continue;
-                            var w = parseFloat(p.width), h = parseFloat(p.height), d = parseFloat(p.depth);
-                            if (isNaN(w) || isNaN(h) || isNaN(d)) continue;
-                            loaded.push({ name: String(p.name || ("Preset " + (i + 1))), width: w, height: h, depth: d });
+                            var parsedItem = parsePresetObject(list[i], "Preset " + (i + 1));
+                            if (parsedItem) loaded.push(parsedItem);
                         }
                     } else if (list && typeof list === "object") {
                         for (var k in list) {
                             if (list.hasOwnProperty(k) && k.charAt(0) !== "$" && k !== "version" && k !== "description") {
-                                var item = list[k];
-                                if (!item) continue;
-                                var wi = parseFloat(item.width), hi = parseFloat(item.height), di = parseFloat(item.depth);
-                                if (isNaN(wi) || isNaN(hi) || isNaN(di)) continue;
-                                loaded.push({ name: String(item.name || k), width: wi, height: hi, depth: di });
+                                var parsedObj = parsePresetObject(list[k], k);
+                                if (parsedObj) loaded.push(parsedObj);
                             }
                         }
                     }
@@ -521,7 +636,7 @@
         var idx = dropDimPreset.selection.index - 1;
         if (idx < 0 || idx >= DIM_PRESETS.length) return;
         var p = DIM_PRESETS[idx];
-        setDim(p.width, p.height, p.depth, true);
+        applyPreset(p);
     };
 
     btnReloadDimPresets.onClick = function() {
@@ -558,6 +673,71 @@
     };
 
     populateDimPresetDropdown();
+
+    function applyPreset(p) {
+        if (!p) return;
+
+        // 1. Dimensions (Width, Height, Depth)
+        if (p.width !== undefined) {
+            var w = Math.max(sldW.minvalue, Math.min(sldW.maxvalue, p.width));
+            sldW.value = w; txtW.text = String(w);
+        }
+        if (p.height !== undefined) {
+            var h = Math.max(sldH.minvalue, Math.min(sldH.maxvalue, p.height));
+            sldH.value = h; txtH.text = String(h);
+        }
+        if (p.depth !== undefined) {
+            var d = Math.max(sldD.minvalue, Math.min(sldD.maxvalue, p.depth));
+            sldD.value = d; txtD.text = String(d);
+        }
+
+        // 2. Corner Radius
+        if (p.radius !== undefined && typeof sldMaster !== "undefined") {
+            var r = Math.max(0, Math.min(400, p.radius));
+            chkLink.value = true;
+            grpMaster.enabled = true;
+            grpGrid.enabled = false;
+            sldMaster.value = r; txtMaster.text = String(Math.round(r));
+            sldTL.value = r; txtTL.text = String(Math.round(r));
+            sldTR.value = r; txtTR.text = String(Math.round(r));
+            sldBL.value = r; txtBL.text = String(Math.round(r));
+            sldBR.value = r; txtBR.text = String(Math.round(r));
+        }
+
+        // 3. Fill Colors & Opacities
+        if (p.frontColor && typeof cpFront !== "undefined" && cpFront && typeof cpFront.setColor === "function") {
+            cpFront.setColor(p.frontColor, false);
+        }
+        if (p.backColor && typeof cpBack !== "undefined" && cpBack && typeof cpBack.setColor === "function") {
+            cpBack.setColor(p.backColor, false);
+        }
+        if (p.capsOpacity !== undefined && typeof sldCapOp !== "undefined" && sldCapOp && txtCapOp) {
+            var capOp = Math.max(0, Math.min(100, p.capsOpacity));
+            sldCapOp.value = capOp; txtCapOp.text = String(Math.round(capOp));
+        }
+        if (p.sidesColor && typeof cpSides !== "undefined" && cpSides && typeof cpSides.setColor === "function") {
+            cpSides.setColor(p.sidesColor, false);
+        }
+        if (p.sidesOpacity !== undefined && typeof sldSidesOp !== "undefined" && sldSidesOp && txtSidesOp) {
+            var sideOp = Math.max(0, Math.min(100, p.sidesOpacity));
+            sldSidesOp.value = sideOp; txtSidesOp.text = String(Math.round(sideOp));
+        }
+
+        // 4. Line / Stroke Width, Color & Opacity
+        if (p.strokeColor && typeof cpStroke !== "undefined" && cpStroke && typeof cpStroke.setColor === "function") {
+            cpStroke.setColor(p.strokeColor, false);
+        }
+        if (p.strokeWidth !== undefined && typeof sldThick !== "undefined" && sldThick && txtThick) {
+            var thick = Math.max(0, Math.min(30, p.strokeWidth));
+            sldThick.value = thick; txtThick.text = String(thick);
+        }
+        if (p.strokeOpacity !== undefined && typeof sldStrokeOp !== "undefined" && sldStrokeOp && txtStrokeOp) {
+            var stOp = Math.max(0, Math.min(100, p.strokeOpacity));
+            sldStrokeOp.value = stOp; txtStrokeOp.text = String(Math.round(stOp));
+        }
+
+        buildOrUpdateExtruded(false);
+    }
 
     function setDim(w, h, d, fromPreset) {
         w = Math.max(sldW.minvalue, Math.min(sldW.maxvalue, w));
@@ -826,8 +1006,17 @@
             }
         };
 
+        picker.setColor = setColor;
         setColor(defaultHex, false);
         return picker;
+    }
+
+    function resetPresetDropdown() {
+        if (dropDimPreset && dropDimPreset.selection && dropDimPreset.selection.index !== 0) {
+            suppressPresetChange = true;
+            dropDimPreset.selection = 0;
+            suppressPresetChange = false;
+        }
     }
 
     // Front Face Color
@@ -837,7 +1026,7 @@
     var lblFrontCol = grpFrontCol.add("statictext", undefined, "Front Color:");
     lblFrontCol.preferredSize = [135, -1];
     var cpFront = createColorPicker(grpFrontCol, "#2288ee");
-    cpFront.onChange = function() { buildOrUpdateExtruded(false); };
+    cpFront.onChange = function() { resetPresetDropdown(); buildOrUpdateExtruded(false); };
 
     // Back Face Color
     var grpBackCol = pnlStyle.add("group");
@@ -846,7 +1035,7 @@
     var lblBackCol = grpBackCol.add("statictext", undefined, "Back Color:");
     lblBackCol.preferredSize = [135, -1];
     var cpBack = createColorPicker(grpBackCol, "#ee8822");
-    cpBack.onChange = function() { buildOrUpdateExtruded(false); };
+    cpBack.onChange = function() { resetPresetDropdown(); buildOrUpdateExtruded(false); };
 
     // Front / Back Caps Opacity
     var grpCapOp = pnlStyle.add("group");
@@ -866,7 +1055,7 @@
     var lblSidesCol = grpSidesCol.add("statictext", undefined, "Sides Color:");
     lblSidesCol.preferredSize = [135, -1];
     var cpSides = createColorPicker(grpSidesCol, "#1166cc");
-    cpSides.onChange = function() { buildOrUpdateExtruded(false); };
+    cpSides.onChange = function() { resetPresetDropdown(); buildOrUpdateExtruded(false); };
 
     // Sides / Walls Opacity
     var grpSidesOp = pnlStyle.add("group");
@@ -886,7 +1075,7 @@
     var lblStroke = grpStroke.add("statictext", undefined, "Stroke Color:");
     lblStroke.preferredSize = [135, -1];
     var cpStroke = createColorPicker(grpStroke, "#ffffff");
-    cpStroke.onChange = function() { buildOrUpdateExtruded(false); };
+    cpStroke.onChange = function() { resetPresetDropdown(); buildOrUpdateExtruded(false); };
 
     // Stroke Width
     var grpThick = pnlStyle.add("group");
@@ -955,13 +1144,12 @@
         };
     }
 
-    var onLiveUpdate = function() { buildOrUpdateExtruded(false); };
+    var onLiveUpdate = function() {
+        resetPresetDropdown();
+        buildOrUpdateExtruded(false);
+    };
     var onDimSliderUpdate = function() {
-        if (dropDimPreset && dropDimPreset.selection && dropDimPreset.selection.index !== 0) {
-            suppressPresetChange = true;
-            dropDimPreset.selection = 0;
-            suppressPresetChange = false;
-        }
+        resetPresetDropdown();
         buildOrUpdateExtruded(false);
     };
     hookSliderText(sldW, txtW, onDimSliderUpdate, true);
