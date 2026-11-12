@@ -68,7 +68,8 @@
         return [
             ((num >> 16) & 255) / 255, // Red (0.0 to 1.0)
             ((num >> 8) & 255) / 255,  // Green (0.0 to 1.0)
-            (num & 255) / 255          // Blue (0.0 to 1.0)
+            (num & 255) / 255,         // Blue (0.0 to 1.0)
+            1.0                        // Alpha (0.0 to 1.0) - required 4th element for AE Color Control
         ];
     }
 
@@ -354,6 +355,7 @@
         if (raw.strokeColor) obj.strokeColor = String(raw.strokeColor);
         if (raw.strokeWidth !== undefined && !isNaN(parseFloat(raw.strokeWidth))) obj.strokeWidth = parseFloat(raw.strokeWidth);
         if (raw.strokeOpacity !== undefined && !isNaN(parseFloat(raw.strokeOpacity))) obj.strokeOpacity = parseFloat(raw.strokeOpacity);
+        if (raw.hideEdgeStrokes !== undefined) obj.hideEdgeStrokes = Boolean(raw.hideEdgeStrokes);
         return obj;
     }
 
@@ -735,6 +737,15 @@
             var stOp = Math.max(0, Math.min(100, p.strokeOpacity));
             sldStrokeOp.value = stOp; txtStrokeOp.text = String(Math.round(stOp));
         }
+        if (p.hideEdgeStrokes !== undefined && typeof chkHideEdgeStrokes !== "undefined" && chkHideEdgeStrokes) {
+            chkHideEdgeStrokes.value = Boolean(p.hideEdgeStrokes);
+        }
+
+        try {
+            if (win && win.layout && typeof win.layout.layout === "function") {
+                win.layout.layout(true);
+            }
+        } catch(eLay) {}
 
         buildOrUpdateExtruded(false);
     }
@@ -965,6 +976,7 @@
 
             if (btnSwatch.domElement) {
                 btnSwatch.domElement.style.backgroundColor = newHex;
+                btnSwatch.domElement.style.background = newHex;
                 btnSwatch.domElement.style.border = "1px solid #777";
             }
 
@@ -1098,6 +1110,17 @@
     sldStrokeOp.alignment = ["fill", "center"];
     var txtStrokeOp = grpStrokeOp.add("edittext", undefined, "100");
     txtStrokeOp.characters = 3;
+
+    // Hide Edge Strokes Checkbox (By default is off)
+    var grpHideEdgeStrokes = pnlStyle.add("group");
+    grpHideEdgeStrokes.orientation = "row";
+    grpHideEdgeStrokes.alignment = ["fill", "top"];
+    var chkHideEdgeStrokes = grpHideEdgeStrokes.add("checkbox", undefined, "Hide edge strokes");
+    chkHideEdgeStrokes.value = false;
+    chkHideEdgeStrokes.helpTip = "Hides stroke lines on side walls and corner facets while preserving the stroke on front and back faces.";
+    chkHideEdgeStrokes.onClick = function() {
+        buildOrUpdateExtruded(false);
+    };
 
     // Inner Sides Checkbox (Non-animatable, paints inner sides using edge color)
     var grpInnerSides = pnlStyle.add("group");
@@ -1538,6 +1561,9 @@
         var strokeColor = hexToRgb(cpStroke._color);
         var strokeWidth = Math.max(0, parseFloat(txtThick.text) || 0);
         var strokeOpacity = Math.max(0, Math.min(100, parseFloat(txtStrokeOp.text) || 100));
+        var hideEdgeStrokes = (typeof chkHideEdgeStrokes !== "undefined" && chkHideEdgeStrokes) ? chkHideEdgeStrokes.value : false;
+        var edgeStrokeWidth = hideEdgeStrokes ? 0 : strokeWidth;
+        var edgeStrokeOpacity = hideEdgeStrokes ? 0 : strokeOpacity;
 
         var center = [parentComp.width / 2, parentComp.height / 2, 0];
 
@@ -1617,7 +1643,7 @@
                 wallTop.name = "Wall_Top";
                 wallTop.threeDLayer = true;
                 wallTop.shy = true;
-                setupRectVector(wallTop, [Math.max(0.1, w - rTL - rTR), d], sidesColor, sidesOpacity, strokeColor, strokeWidth, strokeOpacity);
+                setupRectVector(wallTop, [Math.max(0.1, w - rTL - rTR), d], sidesColor, sidesOpacity, strokeColor, edgeStrokeWidth, edgeStrokeOpacity);
                 wallTop.parent = master;
                 setTransformVal(wallTop, "Anchor Point", [0, 0, 0]);
                 setTransformVal(wallTop, "Position", [(-rTR + rTL) / 2, -h / 2, 0]);
@@ -1629,7 +1655,7 @@
                 wallBottom.name = "Wall_Bottom";
                 wallBottom.threeDLayer = true;
                 wallBottom.shy = true;
-                setupRectVector(wallBottom, [Math.max(0.1, w - rBL - rBR), d], sidesColor, sidesOpacity, strokeColor, strokeWidth, strokeOpacity);
+                setupRectVector(wallBottom, [Math.max(0.1, w - rBL - rBR), d], sidesColor, sidesOpacity, strokeColor, edgeStrokeWidth, edgeStrokeOpacity);
                 wallBottom.parent = master;
                 setTransformVal(wallBottom, "Anchor Point", [0, 0, 0]);
                 setTransformVal(wallBottom, "Position", [(-rBR + rBL) / 2, h / 2, 0]);
@@ -1641,7 +1667,7 @@
                 wallLeft.name = "Wall_Left";
                 wallLeft.threeDLayer = true;
                 wallLeft.shy = true;
-                setupRectVector(wallLeft, [Math.max(0.1, h - rTL - rBL), d], sidesColor, sidesOpacity, strokeColor, strokeWidth, strokeOpacity);
+                setupRectVector(wallLeft, [Math.max(0.1, h - rTL - rBL), d], sidesColor, sidesOpacity, strokeColor, edgeStrokeWidth, edgeStrokeOpacity);
                 wallLeft.parent = master;
                 setTransformVal(wallLeft, "Anchor Point", [0, 0, 0]);
                 setTransformVal(wallLeft, "Position", [-w / 2, (-rBL + rTL) / 2, 0]);
@@ -1653,7 +1679,7 @@
                 wallRight.name = "Wall_Right";
                 wallRight.threeDLayer = true;
                 wallRight.shy = true;
-                setupRectVector(wallRight, [Math.max(0.1, h - rTR - rBR), d], sidesColor, sidesOpacity, strokeColor, strokeWidth, strokeOpacity);
+                setupRectVector(wallRight, [Math.max(0.1, h - rTR - rBR), d], sidesColor, sidesOpacity, strokeColor, edgeStrokeWidth, edgeStrokeOpacity);
                 wallRight.parent = master;
                 setTransformVal(wallRight, "Anchor Point", [0, 0, 0]);
                 setTransformVal(wallRight, "Position", [w / 2, (-rBR + rTR) / 2, 0]);
@@ -1678,7 +1704,7 @@
                         cWall.name = "Corner_" + cornerId + "_Wall_" + (s + 1);
                         cWall.threeDLayer = true;
                         cWall.shy = true;
-                        setupRectVector(cWall, [chord, d], sidesColor, sidesOpacity, strokeColor, strokeWidth, strokeOpacity);
+                        setupRectVector(cWall, [chord, d], sidesColor, sidesOpacity, strokeColor, edgeStrokeWidth, edgeStrokeOpacity);
                         cWall.parent = master;
                         setTransformVal(cWall, "Anchor Point", [0, 0, 0]);
                         setTransformVal(cWall, "Position", [posX, posY, 0]);
@@ -1860,6 +1886,7 @@
                 addMasterProp("ADBE Color Control",    "Stroke Color",         strokeColor);
                 addMasterProp("ADBE Slider Control",   "Stroke Width",         strokeWidth);
                 addMasterProp("ADBE Slider Control",   "Stroke Opacity",       strokeOpacity);
+                addMasterProp("ADBE Checkbox Control", "Hide Edge Strokes",    hideEdgeStrokes ? 1 : 0);
 
                 // 7. Expressions on Master Controller inside Subcomp
                 if (preMaster) {
@@ -1868,7 +1895,7 @@
                         if (!parade) return null;
                         var eff = parade.addProperty(
                             effName.indexOf("Color") !== -1 ? "ADBE Color Control" :
-                            (effName.indexOf("Link") !== -1 || effName.indexOf("Overlap") !== -1 ? "ADBE Checkbox Control" : "ADBE Slider Control")
+                            (effName.indexOf("Link") !== -1 || effName.indexOf("Overlap") !== -1 || effName.indexOf("Hide") !== -1 ? "ADBE Checkbox Control" : "ADBE Slider Control")
                         );
                         eff.name = effName;
                         if (typeof defaultVal !== "undefined" && eff.property(1) && typeof eff.property(1).setValue === "function") {
@@ -1897,6 +1924,7 @@
                     linkControllerProp("Stroke Color", "Stroke Color", strokeColor);
                     linkControllerProp("Stroke Width", "Stroke Width", strokeWidth);
                     linkControllerProp("Stroke Opacity", "Stroke Opacity", strokeOpacity);
+                    linkControllerProp("Hide Edge Strokes", "Hide Edge Strokes", hideEdgeStrokes ? 1 : 0);
                 }
 
                 // 8. Dynamic Expressions on Subcomp Layers
@@ -1909,6 +1937,7 @@
                 var exprStrokeCol = 'try { thisComp.layer("Extruded_Rect_Master_Controller").effect("Stroke Color")(1).value; } catch(e) { value; }';
                 var exprStrokeWidth = 'try { Math.max(0, thisComp.layer("Extruded_Rect_Master_Controller").effect("Stroke Width")(1).value); } catch(e) { value; }';
                 var exprStrokeOp = 'try { var sw = thisComp.layer("Extruded_Rect_Master_Controller").effect("Stroke Width")(1).value; var op = thisComp.layer("Extruded_Rect_Master_Controller").effect("Stroke Opacity")(1).value; (sw <= 0.0001) ? 0 : op; } catch(e) { value; }';
+                var exprEdgeStrokeOp = 'try { var hide = thisComp.layer("Extruded_Rect_Master_Controller").effect("Hide Edge Strokes")(1).value; if (hide > 0) 0; else { var sw = thisComp.layer("Extruded_Rect_Master_Controller").effect("Stroke Width")(1).value; var op = thisComp.layer("Extruded_Rect_Master_Controller").effect("Stroke Opacity")(1).value; (sw <= 0.0001) ? 0 : op; } } catch(e) { value; }';
 
                 // Setup layer expressions helper
                 function applyCommonMaterialExprs(lay, faceType) {
@@ -1939,7 +1968,9 @@
                         var sW = stroke.property("ADBE Vector Stroke Width") || stroke.property("Stroke Width") || stroke.property(2);
                         if (sW) sW.expression = exprStrokeWidth;
                         var sOp = stroke.property("ADBE Vector Stroke Opacity") || stroke.property("Opacity") || stroke.property(3);
-                        if (sOp) sOp.expression = exprStrokeOp;
+                        if (sOp) {
+                            sOp.expression = (faceType === "front" || faceType === "back") ? exprStrokeOp : exprEdgeStrokeOp;
+                        }
                     }
                 }
 
@@ -2118,6 +2149,16 @@
         // ---------------------------------------------------------------------
         else {
             var existingLayer = getLayer(parentComp, currentPrecompName);
+            if (!existingLayer && parentComp.layers) {
+                for (var li = 1; li <= parentComp.layers.length; li++) {
+                    var testLayer = getLayer(parentComp, li);
+                    if (testLayer && testLayer.name && testLayer.name.indexOf("extruded_rect_") === 0) {
+                        existingLayer = testLayer;
+                        currentPrecompName = testLayer.name;
+                        break;
+                    }
+                }
+            }
             if (!existingLayer) return;
 
             function setEffectVal(layer, effName, val) {
@@ -2127,11 +2168,19 @@
                     var eff = parade.property(effName);
                     if (eff) {
                         var p = eff.property(1);
-                        if (p && typeof p.setValue === "function") p.setValue(val);
+                        if (p && typeof p.setValue === "function") {
+                            try {
+                                if (val instanceof Array && val.length === 3) {
+                                    val = [val[0], val[1], val[2], 1.0];
+                                }
+                                p.setValue(val);
+                            } catch(eSet) {}
+                        }
                     }
                 }
             }
 
+            // 1. Update Master effect controls on parent comp representation layer
             setEffectVal(existingLayer, "Width",                w);
             setEffectVal(existingLayer, "Height",               h);
             setEffectVal(existingLayer, "Extrude Depth",        d);
@@ -2153,6 +2202,97 @@
             setEffectVal(existingLayer, "Stroke Color",         strokeColor);
             setEffectVal(existingLayer, "Stroke Width",         strokeWidth);
             setEffectVal(existingLayer, "Stroke Opacity",       strokeOpacity);
+            setEffectVal(existingLayer, "Hide Edge Strokes",    hideEdgeStrokes ? 1 : 0);
+
+            // 2. Also update Master effect controls on preMaster inside subcomp
+            var subComp = existingLayer.source;
+            if (subComp) {
+                var preMaster = getLayer(subComp, "Extruded_Rect_Master_Controller");
+                if (preMaster) {
+                    setEffectVal(preMaster, "Width",                w);
+                    setEffectVal(preMaster, "Height",               h);
+                    setEffectVal(preMaster, "Extrude Depth",        d);
+                    setEffectVal(preMaster, "Link All Corners",     linkAll ? 1 : 0);
+                    setEffectVal(preMaster, "Radius All",           rAll);
+                    setEffectVal(preMaster, "Radius Top-Left",      rTL);
+                    setEffectVal(preMaster, "Radius Top-Right",     rTR);
+                    setEffectVal(preMaster, "Radius Bottom-Right",  rBR);
+                    setEffectVal(preMaster, "Radius Bottom-Left",   rBL);
+                    setEffectVal(preMaster, "Corner Segments",      segCount);
+                    setEffectVal(preMaster, "Prevent Overlap",      preventOverlap ? 1 : 0);
+                    setEffectVal(preMaster, "Front Color",          frontColor);
+                    setEffectVal(preMaster, "Back Color",           backColor);
+                    setEffectVal(preMaster, "Caps Opacity",         capsOpacity);
+                    setEffectVal(preMaster, "Sides Color",          sidesColor);
+                    setEffectVal(preMaster, "Sides Opacity",        sidesOpacity);
+                    setEffectVal(preMaster, "Stroke Color",         strokeColor);
+                    setEffectVal(preMaster, "Stroke Width",         strokeWidth);
+                    setEffectVal(preMaster, "Stroke Opacity",       strokeOpacity);
+                    setEffectVal(preMaster, "Hide Edge Strokes",    hideEdgeStrokes ? 1 : 0);
+                }
+
+                // 3. Directly update base values on vector shape fill & stroke properties
+                function updateShapeMaterial(lay, colVal, opVal, strColVal, strWVal, strOpVal) {
+                    if (!lay) return;
+                    var root = lay.property("ADBE Root Vectors Group") || lay.property("Contents") || (lay.property && lay.property(1));
+                    if (!root) return;
+                    var grp = root.property(1);
+                    if (!grp) return;
+                    var contents = grp.property("ADBE Vectors Group") || grp.property("Contents") || (grp.property && grp.property(2)) || (grp.property && grp.property(1));
+                    if (!contents) return;
+
+                    var fill = contents.property("ADBE Vector Graphic - Fill") || contents.property(2);
+                    if (fill) {
+                        var fCol = fill.property("ADBE Vector Fill Color") || fill.property("Color") || fill.property(1);
+                        if (fCol && typeof fCol.setValue === "function") {
+                            try { fCol.setValue(colVal); } catch(eFC) {}
+                        }
+                        var fOp = fill.property("ADBE Vector Fill Opacity") || fill.property("Opacity") || fill.property(2);
+                        if (fOp && typeof fOp.setValue === "function") {
+                            try { fOp.setValue(opVal); } catch(eFO) {}
+                        }
+                    }
+
+                    var stroke = contents.property("ADBE Vector Graphic - Stroke") || contents.property(3);
+                    if (stroke) {
+                        var sCol = stroke.property("ADBE Vector Stroke Color") || stroke.property("Color") || stroke.property(1);
+                        if (sCol && typeof sCol.setValue === "function") {
+                            try { sCol.setValue(strColVal); } catch(eSC) {}
+                        }
+                        var sW = stroke.property("ADBE Vector Stroke Width") || stroke.property("Stroke Width") || stroke.property(2);
+                        if (sW && typeof sW.setValue === "function") {
+                            try { sW.setValue(strWVal); } catch(eSW) {}
+                        }
+                        var sOp = stroke.property("ADBE Vector Stroke Opacity") || stroke.property("Opacity") || stroke.property(3);
+                        if (sOp && typeof sOp.setValue === "function") {
+                            try { sOp.setValue(strWVal <= 0.0001 ? 0 : strOpVal); } catch(eSO) {}
+                        }
+                    }
+                }
+
+                updateShapeMaterial(getLayer(subComp, "Cap_Front"), frontColor, capsOpacity, strokeColor, strokeWidth, strokeOpacity);
+                updateShapeMaterial(getLayer(subComp, "Cap_Back"), backColor, capsOpacity, strokeColor, strokeWidth, strokeOpacity);
+                updateShapeMaterial(getLayer(subComp, "Cap_Front_Inner"), sidesColor, sidesOpacity, strokeColor, 0, 0);
+                updateShapeMaterial(getLayer(subComp, "Cap_Back_Inner"), sidesColor, sidesOpacity, strokeColor, 0, 0);
+                updateShapeMaterial(getLayer(subComp, "Wall_Top"), sidesColor, sidesOpacity, strokeColor, edgeStrokeWidth, edgeStrokeOpacity);
+                updateShapeMaterial(getLayer(subComp, "Wall_Bottom"), sidesColor, sidesOpacity, strokeColor, edgeStrokeWidth, edgeStrokeOpacity);
+                updateShapeMaterial(getLayer(subComp, "Wall_Left"), sidesColor, sidesOpacity, strokeColor, edgeStrokeWidth, edgeStrokeOpacity);
+                updateShapeMaterial(getLayer(subComp, "Wall_Right"), sidesColor, sidesOpacity, strokeColor, edgeStrokeWidth, edgeStrokeOpacity);
+
+                for (var ci = 1; ci <= (subComp.layers.length || 0); ci++) {
+                    var cLay = getLayer(subComp, ci);
+                    if (cLay && cLay.name && cLay.name.indexOf("Corner_") === 0) {
+                        updateShapeMaterial(cLay, sidesColor, sidesOpacity, strokeColor, edgeStrokeWidth, edgeStrokeOpacity);
+                    }
+                }
+            }
+
+            // 4. Force After Effects Viewport Redraw
+            try {
+                if (app.project && app.project.activeItem) {
+                    app.project.activeItem.time = app.project.activeItem.time;
+                }
+            } catch(eRedraw) {}
         }
     }
 
